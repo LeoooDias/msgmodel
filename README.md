@@ -1,6 +1,6 @@
 # msgModel
 
-A unified Python script for interacting with multiple Large Language Model (LLM) providers through a single interface.
+A Python script for interacting with multiple Large Language Model (LLM) providers through a single interface and common syntax.
 
 ## Overview
 
@@ -18,7 +18,7 @@ This tool allows you to send prompts with optional file attachments (images, PDF
 - **System instructions**: Define custom system-level instructions to guide model behavior
 - **Configurable parameters**: Control temperature, top-p, top-k, and other generation parameters
 - **Automatic file handling**: Handles base64 encoding and provider-specific file upload requirements
-- **Privacy-focused**: Minimizes data retention across all providers
+- **Privacy-focused**: Standard settings minimize data retention across all providers
   - OpenAI: Opts out of data storage for training, auto-deletes uploaded files
   - Gemini: Disables caching to prevent data retention
   - Claude: Configures privacy-preserving settings
@@ -107,7 +107,7 @@ python msgModel.py -a c -p random.prompt -t 500
 
 **With system instruction:**
 ```bash
-python msgModel.py -a g -p random.prompt -i max.instruction
+python msgModel.py -a g -p random.prompt -i analyst.instruction
 ```
 
 **Image analysis with GPT-4:**
@@ -122,14 +122,14 @@ python msgModel.py -a g -t 2000 -p analyze_doc.prompt -i summarizer.instruction 
 
 **Arguments in any order:**
 ```bash
-python msgModel.py -p request.prompt -t 500 -a c -i max.instruction
+python msgModel.py -p request.prompt -t 500 -a c -i expert.instruction
 ```
 
 ### Sample Files
 
-Create instruction and prompt files as plain text:
+Create instruction and prompt files as plain text. Examples:
 
-**max.instruction**:
+**expert.instruction**:
 ```
 You are a seasoned technology strategist and operator with decades across infrastructure, software, product, security, and enterprise IT.
 ```
