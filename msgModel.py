@@ -27,6 +27,9 @@ Examples:
     python msgModel.py -p request.prompt -t 500 -a c -i max.instruction
 """
 
+__version__ = "1.0.0"
+__author__ = "Leo Dias"
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -86,17 +89,26 @@ GEMINI_CACHE_CONTROL = False
 # Default values for optional arguments
 DEFAULT_MAX_TOKENS = 1000  # Default maximum tokens if not specified as an argument
 
+# File encoding
+FILE_ENCODING = 'utf-8'  # Standard encoding for text files
+
+# MIME type constants
+MIME_TYPE_JSON = 'application/json'
+MIME_TYPE_PDF = 'application/pdf'
+MIME_TYPE_OCTET_STREAM = 'application/octet-stream'
+
 # ============================================================================
 # IMPORTS
 # ============================================================================
+import argparse                 #For parsing command-line arguments
 import requests                 #For making HTTP API calls to LLM providers
 import json                     #For encoding/decoding JSON payloads
-import sys                      #For command-line argument handling and exiting
-import os                       #For file path operations
+import sys                      #For system operations and exiting
 import base64                   #For encoding/decoding binary data (e.g., images, PDFs)
 import mimetypes                #For detecting file types from file extensions
 import logging                  #For logging messages
 from datetime import datetime   #For timestamping output files
+from pathlib import Path        #For modern path operations
 from typing import Optional, Dict, Any, List    #For type hints to improve code readability and IDE support
 from enum import Enum                           #For defining enumerated constants
 
@@ -123,6 +135,7 @@ class ExitCode(Enum):
     FILE_NOT_FOUND = 2
     API_ERROR = 3
     AUTHENTICATION_ERROR = 4
+    GENERAL_ERROR = 5
 
 
 # ============================================================================
@@ -177,91 +190,85 @@ def validate_max_tokens(max_tokens: int) -> None:
         logger.warning(f"max_tokens={max_tokens} is very large and may cause issues")
 
 
-def validate_file_exists(file_path: str, description: str) -> None:
+def validate_file_exists(file_path: str, file_description: str) -> None:
     """
     Validate that a file exists.
     
     Args:
-        file_path: Path to the file to check
-        description: Description of the file for error messages
+        file_path: Path to the file to validate
+        file_description: Human-readable description of the file (for error messages)
         
     Raises:
         FileNotFoundError: If the file does not exist
     """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"{description} not found: {file_path}")
+    if not Path(file_path).exists():
+        raise FileNotFoundError(f"{file_description} not found: {file_path}")
 
 
 def parse_arguments() -> Dict[str, Any]:
     """
-    Parse command-line arguments with flexible ordering.
+    Parse command-line arguments using argparse.
     
     Returns:
         Dict containing parsed arguments: ai_provider, max_tokens, prompt_file,
         instruction_file (optional), binary_file (optional)
-        
-    Raises:
-        ValueError: If required arguments are missing or invalid
     """
-    args: Dict[str, Any] = {
-        'ai_provider': None,
-        'max_tokens': None,
-        'prompt_file': None,
-        'instruction_file': None,
-        'binary_file': None
+    parser = argparse.ArgumentParser(
+        description='Unified LLM API script supporting OpenAI, Gemini, and Claude.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  %(prog)s -a g -p random.prompt
+  %(prog)s -a o -t 1000 -p describe.prompt -i analyst.instruction -f photo.jpg
+  %(prog)s -p request.prompt -t 500 -a c -i max.instruction
+'''
+    )
+    
+    parser.add_argument(
+        '-a', '--ai-provider',
+        required=True,
+        choices=['o', 'g', 'c'],
+        help="AI provider: 'o' (OpenAI), 'g' (Gemini), 'c' (Claude)"
+    )
+    
+    parser.add_argument(
+        '-p', '--prompt-file',
+        required=True,
+        help='Path to file containing the user prompt'
+    )
+    
+    parser.add_argument(
+        '-t', '--max-tokens',
+        type=int,
+        default=DEFAULT_MAX_TOKENS,
+        help=f'Maximum number of tokens to generate (default: {DEFAULT_MAX_TOKENS})'
+    )
+    
+    parser.add_argument(
+        '-i', '--instruction-file',
+        help='Path to file containing system instructions'
+    )
+    
+    parser.add_argument(
+        '-f', '--binary-file',
+        help='Path to binary file (image, PDF, etc.)'
+    )
+    
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
+    
+    args = parser.parse_args()
+    
+    return {
+        'ai_provider': args.ai_provider,
+        'max_tokens': args.max_tokens,
+        'prompt_file': args.prompt_file,
+        'instruction_file': args.instruction_file,
+        'binary_file': args.binary_file
     }
-    
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        
-        if arg == '-a':
-            # AI provider
-            if i + 1 >= len(sys.argv):
-                raise ValueError("Missing value for -a argument")
-            args['ai_provider'] = sys.argv[i + 1]
-            i += 2
-        elif arg == '-t':
-            # Max tokens
-            if i + 1 >= len(sys.argv):
-                raise ValueError("Missing value for -t argument")
-            try:
-                args['max_tokens'] = int(sys.argv[i + 1])
-            except ValueError:
-                raise ValueError(f"Invalid max_tokens value: {sys.argv[i + 1]} (must be an integer)")
-            i += 2
-        elif arg == '-p':
-            # Prompt file
-            if i + 1 >= len(sys.argv):
-                raise ValueError("Missing value for -p argument")
-            args['prompt_file'] = sys.argv[i + 1]
-            i += 2
-        elif arg == '-i':
-            # Instruction file (optional)
-            if i + 1 >= len(sys.argv):
-                raise ValueError("Missing value for -i argument")
-            args['instruction_file'] = sys.argv[i + 1]
-            i += 2
-        elif arg == '-f':
-            # Binary file (optional)
-            if i + 1 >= len(sys.argv):
-                raise ValueError("Missing value for -f argument")
-            args['binary_file'] = sys.argv[i + 1]
-            i += 2
-        else:
-            raise ValueError(f"Unknown argument: {arg}")
-    
-    # Validate required arguments
-    if args['ai_provider'] is None:
-        raise ValueError("Missing required argument: -a <ai_provider>")
-    if args['prompt_file'] is None:
-        raise ValueError("Missing required argument: -p <prompt_file>")
-    
-    # Apply default for max_tokens if not provided
-    if args['max_tokens'] is None:
-        args['max_tokens'] = DEFAULT_MAX_TOKENS
-    
-    return args
 
 
 # ============================================================================
@@ -286,7 +293,7 @@ def upload_file_openai(api_key: str, file_path: str, purpose: str = "assistants"
     headers = {"Authorization": f"Bearer {api_key}"}
     
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
+        files = {"file": (Path(file_path).name, f)}
         data = {"purpose": purpose}
         resp = requests.post(url, headers=headers, files=files, data=data)
     
@@ -375,7 +382,7 @@ def call_openai_api(
                 "type": "input_image",
                 "image_url": f"data:{mime_type};base64,{encoded_data}"
             })
-        elif mime_type == "application/pdf":
+        elif mime_type == MIME_TYPE_PDF:
             if not file_id:
                 raise ValueError("PDF provided without uploaded file_id")
             content.append({
@@ -429,7 +436,7 @@ def call_openai_api(
         payload["store"] = False
 
     headers = {
-        "Content-Type": "application/json",
+        "Content-Type": MIME_TYPE_JSON,
         "Authorization": f"Bearer {api_key}"
     }
 
@@ -518,7 +525,7 @@ def call_gemini_api(
         payload["systemInstruction"] = gemini_system_instruction
     
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": MIME_TYPE_JSON
     }
     
     response = requests.post(url, headers=headers, data=json.dumps(payload))
@@ -587,7 +594,7 @@ def call_claude_api(
                     "data": data
                 }
             })
-        elif mime_type == "application/pdf":
+        elif mime_type == MIME_TYPE_PDF:
             content.append({
                 "type": "document",
                 "source": {
@@ -701,7 +708,7 @@ def main() -> None:
     
     # Read user prompt from file
     try:
-        with open(user_prompt_file, 'r') as f:
+        with open(user_prompt_file, 'r', encoding=FILE_ENCODING) as f:
             user_prompt_text = f.read()
     except IOError as e:
         logger.error(f"Error reading user prompt file: {e}")
@@ -711,7 +718,7 @@ def main() -> None:
     system_instruction_text = None
     if system_instruction_file:
         try:
-            with open(system_instruction_file, 'r') as f:
+            with open(system_instruction_file, 'r', encoding=FILE_ENCODING) as f:
                 system_instruction_text = f.read()
         except IOError as e:
             logger.error(f"Error reading system instruction file: {e}")
@@ -722,7 +729,7 @@ def main() -> None:
     if binary_file_path:
         mime_type, _ = mimetypes.guess_type(binary_file_path)
         if not mime_type:
-            mime_type = "application/octet-stream"
+            mime_type = MIME_TYPE_OCTET_STREAM
         
         try:
             with open(binary_file_path, 'rb') as f:
@@ -735,7 +742,7 @@ def main() -> None:
         inline_data = {
             "mime_type": mime_type,
             "data": encoded_data,
-            "filename": os.path.basename(binary_file_path),
+            "filename": Path(binary_file_path).name,
             "path": binary_file_path,
         }
     
@@ -750,7 +757,7 @@ def main() -> None:
     # Read the API key from the file
     try:
         validate_file_exists(api_key_file, f"API key file")
-        with open(api_key_file, 'r') as f:
+        with open(api_key_file, 'r', encoding=FILE_ENCODING) as f:
             API_KEY = f.read().strip()
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -765,7 +772,7 @@ def main() -> None:
     if ai_provider == AIProvider.OPENAI:
         uploaded_file_id = None
         try:
-            if inline_data and inline_data.get("mime_type") == "application/pdf":
+            if inline_data and inline_data.get("mime_type") == MIME_TYPE_PDF:
                 file_id = upload_file_openai(API_KEY, inline_data["path"])
                 inline_data["file_id"] = file_id
                 uploaded_file_id = file_id
@@ -839,7 +846,7 @@ def main() -> None:
                     for part_idx, part in enumerate(candidate["content"]["parts"]):
                         if "inline_data" in part:
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                            mime_type = part["inline_data"].get("mime_type", "application/octet-stream")
+                            mime_type = part["inline_data"].get("mime_type", MIME_TYPE_OCTET_STREAM)
                             extension = mimetypes.guess_extension(mime_type) or ".bin"
                             filename = f"output_{timestamp}_c{idx}_p{part_idx}{extension}"
                             
@@ -881,4 +888,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("\nOperation cancelled by user")
+        sys.exit(ExitCode.SUCCESS.value)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        sys.exit(ExitCode.GENERAL_ERROR.value)

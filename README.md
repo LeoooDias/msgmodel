@@ -59,27 +59,37 @@ chmod +x msgModel.py
 ### Basic Syntax
 
 ```bash
-python msgModel.py -a <ai_family> -p <prompt_file> [-t <max_tokens>] [-i <instruction_file>] [-f <binary_file>]
+python msgModel.py -a <ai_provider> -p <prompt_file> [-t <max_tokens>] [-i <instruction_file>] [-f <binary_file>]
+```
+
+Or with long-form arguments:
+
+```bash
+python msgModel.py --ai-provider <provider> --prompt-file <file> [--max-tokens <num>] [--instruction-file <file>] [--binary-file <file>]
 ```
 
 ### Parameters
 
 **Required Arguments:**
 
-- **-a <ai_family>**: Choose the LLM provider
+- **-a, --ai-provider <provider>**: Choose the LLM provider
   - `o` - OpenAI (GPT models)
   - `g` - Gemini (Google)
   - `c` - Claude (Anthropic)
 
-- **-p <prompt_file>**: Path to a text file containing your main prompt/question
+- **-p, --prompt-file <file>**: Path to a text file containing your main prompt/question
 
 **Optional Arguments:**
 
-- **-t <max_tokens>**: Maximum number of tokens to generate (default: 1000)
+- **-t, --max-tokens <num>**: Maximum number of tokens to generate (default: 1000)
 
-- **-i <instruction_file>**: Path to a text file containing system instructions (persona, behavior guidelines)
+- **-i, --instruction-file <file>**: Path to a text file containing system instructions (persona, behavior guidelines)
 
-- **-f <binary_file>**: Path to an attachment (image, PDF, or text file)
+- **-f, --binary-file <file>**: Path to an attachment (image, PDF, or text file)
+
+- **--version**: Display the script version and exit
+
+- **-h, --help**: Display help message with all available options
 
 **Note:** Arguments can be provided in any order.
 
