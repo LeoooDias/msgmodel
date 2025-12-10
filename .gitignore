@@ -38,4 +38,4 @@ ENV/
 
 # Prompts and personas
 *.prompt
-*.persona
+*.instruction
