@@ -22,7 +22,9 @@ This tool allows you to send prompts with optional file attachments (images, PDF
   - OpenAI: Opts out of data storage for training, auto-deletes uploaded files
   - Gemini: Disables caching to prevent data retention
   - Claude: Configures privacy-preserving settings
-- **Error handling**: Clear error messages and status codes
+- **Comprehensive error handling**: Clear error messages with specific exit codes
+- **Type-safe**: Uses Python enums and type hints for better code reliability
+- **Logging**: Structured logging with appropriate severity levels
 
 ## Installation
 
@@ -172,6 +174,25 @@ The script is configured by default to minimize data retention across all provid
 
 **Note**: All configuration values are required and used explicitly throughout the script. The functions do not assume any default values - all parameters are passed from the configuration constants.
 
+## Architecture and Code Quality
+
+The script follows Python best practices:
+
+- **Modular design**: Separate functions for each provider's API calls
+- **Type safety**: Comprehensive type hints using Python's `typing` module
+- **Enumerations**: `AIProvider` and `ExitCode` enums for type-safe constants
+- **Input validation**: Validates file existence and parameter ranges before processing
+- **Structured logging**: Uses Python's `logging` module instead of print statements
+- **Error handling**: Specific exception handling with meaningful error messages
+- **Exit codes**: Different exit codes for different error conditions:
+  - `0`: Success
+  - `1`: Invalid arguments
+  - `2`: File not found
+  - `3`: API error
+  - `4`: Authentication error
+- **Documentation**: Comprehensive docstrings for all functions
+- **Privacy by default**: Data retention minimization built into the core logic
+
 ## Supported File Types
 
 - **Images**: JPEG, PNG, GIF, WebP (automatically converted to base64)
@@ -182,19 +203,22 @@ The script is configured by default to minimize data retention across all provid
 ## Output
 
 The script outputs:
-- The generated response text to stdout
-- Status messages and errors to stderr
-- Exit code 0 on success, non-zero on failure
+- The generated response text (for OpenAI, includes extracted response before full JSON)
+- The complete API response as JSON to stdout
+- Status messages, errors, and privacy information to stderr
+- Exit code 0 on success, non-zero on failure (see Exit Codes above)
 
 ## Error Handling
 
-Common issues and solutions:
+The script provides detailed error messages for common issues:
 
-- **"Error: Missing API key file"**: Ensure you've created the appropriate `.key` file
-- **"File upload failed"**: Check file path and permissions
-- **HTTP 401/403**: Verify your API key is valid and has proper permissions
-- **HTTP 429**: Rate limit exceeded, wait before retrying
-- **HTTP 500**: Provider service error, try again later
+- **Invalid arguments**: Clear usage information with provider options
+- **File not found**: Specific file type and path in error message
+- **API errors**: HTTP status code and response details
+- **Authentication errors**: Guidance on API key file setup
+- **Invalid max_tokens**: Range validation with helpful warnings
+
+All errors are logged to stderr with appropriate severity levels (ERROR, WARNING, INFO).
 
 ## API Rate Limits
 
@@ -223,7 +247,7 @@ This script is designed with privacy as a priority:
 - Privacy status is logged to stderr after each execution
 
 **Claude (Anthropic):**
-- Privacy-mode metadata is added to requests
+- Privacy-mode metadata is added to requests when caching is disabled
 - Caching is disabled by default to prevent data retention
 - According to Anthropic's policies, data sent to the API is not used for training
 

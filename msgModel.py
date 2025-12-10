@@ -10,7 +10,7 @@ This script provides a single interface to interact with three major LLM provide
 - Google Gemini
 - Anthropic Claude
 
-Usage: python generateResponse-unified.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]
+Usage: python msgModel.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]
 
 ai_family:
     'o' for OpenAI
@@ -18,36 +18,92 @@ ai_family:
     'c' for Claude/Anthropic
 
 Example:
-    python generateResponse-unified.py g 150 persona1.instruction request1.prompt document.pdf
+    python msgModel.py g 150 persona1.instruction request1.prompt document.pdf
 """
 
 # ============================================================================
 # IMPORTS
 # ============================================================================
-# requests: For making HTTP API calls to LLM providers
-# json: For encoding/decoding JSON payloads
-# sys: For command-line arguments and exit codes
-# os: For file path operations
-# base64: For encoding binary files (images, PDFs) to base64 strings
-# mimetypes: For detecting file types from file extensions
-# datetime: For generating timestamped filenames for binary outputs
-# typing: For type hints to improve code readability and IDE support
+import requests                 #For making HTTP API calls to LLM providers
+import json                     #For encoding/decoding JSON payloads
+import sys                      #For command-line argument handling and exiting
+import os                       #For file path operations
+import base64                   #For encoding/decoding binary data (e.g., images, PDFs)
+import mimetypes                #For detecting file types from file extensions
+import logging                  #For logging messages
+from datetime import datetime   #For timestamping output files
+from typing import Optional, Dict, Any, List    #For type hints to improve code readability and IDE support
+from enum import Enum                           #For defining enumerated constants
 
-import requests
-import json
-import sys
-import os
-import base64
-import mimetypes
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+# Configure logging at module level
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s',
+    stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# EXIT CODES
+# ============================================================================
+class ExitCode(Enum):
+    """Exit codes for different error conditions."""
+    SUCCESS = 0
+    INVALID_ARGUMENTS = 1
+    FILE_NOT_FOUND = 2
+    API_ERROR = 3
+    AUTHENTICATION_ERROR = 4
+
+
+# ============================================================================
+# AI PROVIDER ENUM
+# ============================================================================
+class AIProvider(Enum):
+    """Supported AI providers."""
+    OPENAI = 'o'
+    GEMINI = 'g'
+    CLAUDE = 'c'
+    
+    @classmethod
+    def from_string(cls, value: str) -> 'AIProvider':
+        """
+        Convert string to AIProvider enum.
+        
+        Args:
+            value: Single character string ('o', 'g', or 'c')
+            
+        Returns:
+            AIProvider enum member
+            
+        Raises:
+            ValueError: If the value is not a valid provider code
+        """
+        value = value.lower()
+        for provider in cls:
+            if provider.value == value:
+                return provider
+        raise ValueError(
+            f"Invalid AI family '{value}'. "
+            f"Use 'o' (OpenAI), 'g' (Gemini), or 'c' (Claude)"
+        )
 
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-# All configuration options for the script.
-# Customize these values as needed for your use case.
+"""
+Configuration constants for the script.
+
+All configuration options are defined here. These control API endpoints,
+model selection, generation parameters, and privacy settings.
+
+Customize these values as needed for your use case.
+"""
 
 # API key files (must exist in working directory)
 # These files should contain only the API key string, with no extra whitespace
@@ -56,60 +112,81 @@ GEMINI_API_KEY_FILE = 'gemini-api.key'
 CLAUDE_API_KEY_FILE = 'claude-api.key'
 
 # API URLs - Base endpoints for each LLM provider
-# OpenAI uses the Responses API endpoint for generating completions
 OPENAI_URL = "https://api.openai.com/v1/responses"
-# OpenAI Files API endpoint is used for uploading PDF files before processing
 OPENAI_FILES_URL = "https://api.openai.com/v1/files"
-# Gemini base URL - the specific endpoint is constructed dynamically with API version and model
 GEMINI_URL = "https://generativelanguage.googleapis.com"
-# Claude base URL - the anthropic library handles endpoint construction
 CLAUDE_URL = "https://api.anthropic.com"
 
 # Model selection - Specifies which specific model variant to use from each provider
-# These should be updated if newer models become available or if different capabilities are needed
-OPENAI_MODEL = "gpt-4o"  # GPT-4 Optimized - balanced performance and cost
-GEMINI_MODEL = "gemini-2.5-pro"  # Latest Gemini Pro model with advanced reasoning
-CLAUDE_MODEL = "claude-sonnet-4-20250514"  # Claude Sonnet 4 - balanced speed and intelligence
+OPENAI_MODEL = "gpt-4o"
+GEMINI_MODEL = "gemini-2.5-pro"
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
 # OpenAI specific settings
-OPENAI_TEMPERATURE = 1.0  # Controls randomness (0.0 = deterministic, 2.0 = very creative)
-OPENAI_TOP_P = 1.0  # Nucleus sampling - considers tokens with top_p probability mass (0.0-1.0)
-OPENAI_N = 1  # Number of completions to generate (we use 1 for single response)
+OPENAI_TEMPERATURE = 1.0
+OPENAI_TOP_P = 1.0
+OPENAI_N = 1
 
 # Gemini specific settings
-GEMINI_TEMPERATURE = 1.0  # Same temperature concept as OpenAI
-GEMINI_TOP_P = 0.95  # Slightly more focused than temperature=1.0
-GEMINI_TOP_K = 40  # Considers only the top k tokens for sampling (higher = more diversity)
-GEMINI_CANDIDATE_COUNT = 1  # Number of response variations to generate
-GEMINI_SAFETY_THRESHOLD = "BLOCK_NONE"  # Content filtering level (BLOCK_NONE, BLOCK_ONLY_HIGH, BLOCK_MEDIUM_AND_ABOVE, BLOCK_LOW_AND_ABOVE)
-GEMINI_API_VERSION = "v1beta"  # Gemini API version to use (v1beta has latest features)
+GEMINI_TEMPERATURE = 1.0
+GEMINI_TOP_P = 0.95
+GEMINI_TOP_K = 40
+GEMINI_CANDIDATE_COUNT = 1
+GEMINI_SAFETY_THRESHOLD = "BLOCK_NONE"
+GEMINI_API_VERSION = "v1beta"
 
 # Claude specific settings
-CLAUDE_TEMPERATURE = 1.0  # Same temperature concept as other models
-CLAUDE_TOP_P = 0.95  # Nucleus sampling parameter
-CLAUDE_TOP_K = 40  # Top-k sampling parameter
+CLAUDE_TEMPERATURE = 1.0
+CLAUDE_TOP_P = 0.95
+CLAUDE_TOP_K = 40
 
 # Privacy and data retention settings
-# These settings control data retention across all providers
-OPENAI_STORE_DATA = False  # When False, this prevents OpenAI from using data for model training
-OPENAI_DELETE_FILES_AFTER_USE = True  # When True, automatically deletes uploaded files after processing
-CLAUDE_CACHE_CONTROL = False  # When False, disables prompt caching to avoid data retention
-GEMINI_CACHE_CONTROL = False  # When False, disables caching for privacy
+OPENAI_STORE_DATA = False
+OPENAI_DELETE_FILES_AFTER_USE = True
+CLAUDE_CACHE_CONTROL = False
+GEMINI_CACHE_CONTROL = False
+
+
+# ============================================================================
+# INPUT VALIDATION
+# ============================================================================
+def validate_max_tokens(max_tokens: int) -> None:
+    """
+    Validate that max_tokens is within reasonable bounds.
+    
+    Args:
+        max_tokens: The maximum number of tokens to generate
+        
+    Raises:
+        ValueError: If max_tokens is not within valid range
+    """
+    if max_tokens < 1:
+        raise ValueError("max_tokens must be at least 1")
+    if max_tokens > 1000000:
+        logger.warning(f"max_tokens={max_tokens} is very large and may cause issues")
+
+
+def validate_file_exists(file_path: str, description: str) -> None:
+    """
+    Validate that a file exists.
+    
+    Args:
+        file_path: Path to the file to check
+        description: Description of the file for error messages
+        
+    Raises:
+        FileNotFoundError: If the file does not exist
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"{description} not found: {file_path}")
 
 
 # ============================================================================
 # OpenAI Functions
 # ============================================================================
-# Functions specific to interacting with OpenAI's API
-# OpenAI requires PDF files to be uploaded separately before they can be referenced
-# in API calls, unlike images which can be sent as base64-encoded data directly.
-
 def upload_file_openai(api_key: str, file_path: str, purpose: str = "assistants") -> str:
     """
     Upload a file to OpenAI Files API and return file_id.
-    
-    This function is necessary for PDF files, which must be uploaded to OpenAI's
-    file storage before they can be referenced in API requests.
     
     Args:
         api_key: OpenAI API authentication key
@@ -117,28 +194,23 @@ def upload_file_openai(api_key: str, file_path: str, purpose: str = "assistants"
         purpose: Purpose of the upload ("assistants" is used for file analysis)
     
     Returns:
-        str: The file_id assigned by OpenAI, used to reference the file in API calls
+        str: The file_id assigned by OpenAI
     
     Raises:
         requests.HTTPError: If the upload fails
     """
     url = OPENAI_FILES_URL
-    # Set up authorization header with Bearer token
     headers = {"Authorization": f"Bearer {api_key}"}
     
-    # Open file in binary read mode and upload it
     with open(file_path, "rb") as f:
-        # Prepare multipart form data with file and purpose
         files = {"file": (os.path.basename(file_path), f)}
         data = {"purpose": purpose}
         resp = requests.post(url, headers=headers, files=files, data=data)
     
-    # Check if upload was successful
     if not resp.ok:
-        print(f"File upload failed {resp.status_code}: {resp.text}")
-        resp.raise_for_status()  # Raise an exception for bad status codes
+        logger.error(f"File upload failed {resp.status_code}: {resp.text}")
+        resp.raise_for_status()
     
-    # Extract and return the file ID from the response
     payload = resp.json()
     return payload.get("id")
 
@@ -146,9 +218,6 @@ def upload_file_openai(api_key: str, file_path: str, purpose: str = "assistants"
 def delete_file_openai(api_key: str, file_id: str) -> bool:
     """
     Delete a file from OpenAI Files API to ensure data privacy.
-    
-    This function removes uploaded files from OpenAI's storage after processing
-    to minimize data retention and protect user privacy.
     
     Args:
         api_key: OpenAI API authentication key
@@ -165,10 +234,16 @@ def delete_file_openai(api_key: str, file_id: str) -> bool:
         if resp.ok:
             return True
         else:
-            print(f"Warning: Failed to delete file {file_id}: {resp.status_code} - {resp.text}", file=sys.stderr)
+            logger.warning(
+                f"Failed to delete file {file_id}: "
+                f"{resp.status_code} - {resp.text}"
+            )
             return False
+    except requests.RequestException as e:
+        logger.warning(f"Request exception while deleting file {file_id}: {e}")
+        return False
     except Exception as e:
-        print(f"Warning: Exception while deleting file {file_id}: {e}", file=sys.stderr)
+        logger.warning(f"Unexpected exception while deleting file {file_id}: {e}")
         return False
 
 
@@ -184,59 +259,48 @@ def call_openai_api(
     model: str
 ) -> Dict[str, Any]:
     """
-    Make an API call to OpenAI using the Responses API, with optional file input.
-    
-    OpenAI's API accepts different types of content in the user message:
-    - Text prompts
-    - Images (as base64 data URLs)
-    - PDF files (via pre-uploaded file_id)
-    - Other text files (decoded and included as text)
+    Make an API call to OpenAI using the Responses API.
     
     Args:
         api_key: OpenAI API key for authentication
         user_prompt: The main text prompt from the user
         max_tokens: Maximum number of tokens to generate in the response
-        system_instruction: Optional system-level instructions to guide model behavior
-        file_data: Optional dictionary containing file information (mime_type, data, filename, file_id)
+        system_instruction: Optional system-level instructions
+        file_data: Optional dictionary containing file information
         temperature: Controls randomness in the output
         top_p: Nucleus sampling parameter
         n: Number of completions to generate
         model: Model identifier to use
     
     Returns:
-        Dict containing the API response with generated content and metadata
+        Dict containing the API response
+        
+    Raises:
+        requests.HTTPError: If the API request fails
     """
     url = OPENAI_URL
-    # Build the content array - OpenAI accepts multiple content blocks in a message
     content: List[Dict[str, Any]] = []
 
-    # Process file_data if provided - different handling based on MIME type
     if file_data:
         mime_type = file_data["mime_type"]
         encoded_data = file_data.get("data", "")
         filename = file_data.get("filename", "input.bin")
-        file_id = file_data.get("file_id")  # Only set for PDFs after upload
+        file_id = file_data.get("file_id")
 
-        # Handle images - send as base64-encoded data URLs
         if mime_type.startswith("image/"):
             content.append({
                 "type": "input_image",
                 "image_url": f"data:{mime_type};base64,{encoded_data}"
             })
-        
-        # Handle PDFs - reference the pre-uploaded file by ID
         elif mime_type == "application/pdf":
             if not file_id:
                 raise ValueError("PDF provided without uploaded file_id")
             content.append({
                 "type": "input_file",
-                "file_id": file_id,  # Reference the uploaded file
+                "file_id": file_id,
             })
-        
-        # Handle text files - decode and include content directly in the prompt
         elif mime_type.startswith("text/"):
             try:
-                # Decode base64 back to text
                 decoded_text = base64.b64decode(encoded_data).decode("utf-8", errors="ignore")
             except Exception:
                 decoded_text = ""
@@ -245,8 +309,6 @@ def call_openai_api(
                     "type": "input_text",
                     "text": f"(Contents of {filename}):\n\n{decoded_text}"
                 })
-        
-        # Handle unsupported file types - add a note about the file
         else:
             content.append({
                 "type": "input_text",
@@ -257,65 +319,49 @@ def call_openai_api(
                 )
             })
 
-    # Always append the user's text prompt last
     content.append({
         "type": "input_text",
         "text": user_prompt
     })
 
-    # Construct the input array with user role and all content blocks
-    # OpenAI expects messages in a specific format with role and content
     input_items: List[Dict[str, Any]] = [
         {
             "role": "user",
-            "content": content  # Can contain multiple content blocks (text, images, files)
+            "content": content
         }
     ]
 
-    # Build the main API request payload
     payload: Dict[str, Any] = {
-        "model": model,  # Which model to use (e.g., gpt-4o)
-        "input": input_items,  # The user message(s)
-        "max_output_tokens": max_tokens,  # Limit on response length
-        "temperature": temperature,  # Control randomness
-        "top_p": top_p,  # Nucleus sampling parameter
+        "model": model,
+        "input": input_items,
+        "max_output_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
     }
 
-    # Add system instructions if provided - this guides the model's overall behavior
     if system_instruction:
         payload["instructions"] = system_instruction
     
-    # Add privacy/data retention settings
-    # OpenAI's store parameter controls whether data can be used for model training
     if not OPENAI_STORE_DATA:
         payload["store"] = False
 
-    # Set up HTTP headers for the request
     headers = {
-        "Content-Type": "application/json",  # Tell server we're sending JSON
-        "Authorization": f"Bearer {api_key}"  # Authentication token
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
     }
 
-    # Make the POST request to OpenAI API
     response = requests.post(url, headers=headers, data=json.dumps(payload))
 
-    # Check for errors and raise exception if request failed
     if not response.ok:
-        print(f"Error {response.status_code}: {response.text}")
+        logger.error(f"OpenAI API error {response.status_code}: {response.text}")
         response.raise_for_status()
 
-    # Return the JSON response from the API
     return response.json()
 
 
 # ============================================================================
 # Gemini Functions
 # ============================================================================
-# Functions specific to interacting with Google's Gemini API
-# Gemini has a different API structure than OpenAI, with different parameter names
-# and a different way of handling file inputs. It also includes safety settings
-# for content filtering.
-
 def call_gemini_api(
     api_key: str,
     gemini_user_prompt: str,
@@ -333,66 +379,50 @@ def call_gemini_api(
     """
     Make an API call to Google Gemini.
     
-    Gemini's API uses a different structure than OpenAI:
-    - API key is passed as a URL parameter, not in headers
-    - Content is organized into "parts" within "contents"
-    - Inline data (files) can be embedded directly in the request
-    - System instructions are a separate top-level field
-    - Safety settings must be configured for content filtering
-    
     Args:
         api_key: Google API key for Gemini
         gemini_user_prompt: The user's text prompt
         gemini_max_tokens: Maximum tokens to generate
-        gemini_system_instruction: Optional system instruction as a dict with 'parts'
-        gemini_inline_data: Optional file data dict with mime_type and base64 data
+        gemini_system_instruction: Optional system instruction as a dict
+        gemini_inline_data: Optional file data dict
         gemini_temperature: Sampling temperature
         gemini_top_p: Nucleus sampling parameter
         gemini_top_k: Top-k sampling parameter
         gemini_candidate_count: Number of response candidates to generate
         gemini_safety_threshold: Content safety filtering level
-        gemini_api_version: API version (v1beta for latest features)
+        gemini_api_version: API version
         model: Model identifier
     
     Returns:
-        Dict containing the API response with candidates and safety ratings
+        Dict containing the API response
+        
+    Raises:
+        requests.HTTPError: If the API request fails
     """
-    # Construct the full URL with API version, model, and API key as query parameter
-    # Gemini uses API key in URL instead of Authorization header
     url = f"{GEMINI_URL}/{gemini_api_version}/models/{model}:generateContent?key={api_key}"
     
-    # Build the "parts" array - Gemini organizes content into parts
-    # Start with the text prompt
     parts: List[Dict[str, Any]] = [{"text": gemini_user_prompt}]
     
-    # Add inline data (file) if provided
     if gemini_inline_data:
-        # Gemini API only accepts mime_type and data fields in inline_data
-        # Filter out any extra fields like filename or path
         filtered_inline_data = {
             "mime_type": gemini_inline_data["mime_type"],
-            "data": gemini_inline_data["data"]  # Base64-encoded file content
+            "data": gemini_inline_data["data"]
         }
         parts.append({"inline_data": filtered_inline_data})
     
-    # Build the main API request payload
     payload = {
-        # Contents array contains the conversation - we send one user message with multiple parts
         "contents": [
             {
-                "parts": parts  # Array of text and/or inline_data parts
+                "parts": parts
             }
         ],
-        # Generation configuration controls the model's output behavior
         "generationConfig": {
             "maxOutputTokens": gemini_max_tokens,
             "temperature": gemini_temperature,
             "topP": gemini_top_p,
             "topK": gemini_top_k,
-            "candidateCount": gemini_candidate_count  # Number of variations to generate
+            "candidateCount": gemini_candidate_count
         },
-        # Safety settings control content filtering across multiple categories
-        # Each category can be set to different threshold levels
         "safetySettings": [
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": gemini_safety_threshold},
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": gemini_safety_threshold},
@@ -401,35 +431,25 @@ def call_gemini_api(
         ]
     }
     
-    # Add system instruction if provided - guides overall model behavior
-    # System instruction is a top-level field in Gemini, not part of contents
     if gemini_system_instruction:
         payload["systemInstruction"] = gemini_system_instruction
     
-    # Set up headers - only Content-Type needed since API key is in URL
     headers = {
         "Content-Type": "application/json"
     }
     
-    # Make the POST request to Gemini API
     response = requests.post(url, headers=headers, data=json.dumps(payload))
     
-    # Check for errors and raise exception if request failed
     if not response.ok:
-        print(f"Error {response.status_code}: {response.text}")
+        logger.error(f"Gemini API error {response.status_code}: {response.text}")
         response.raise_for_status()
     
-    # Return the JSON response - Gemini returns candidates array with generated content
     return response.json()
 
 
 # ============================================================================
 # Claude Functions
 # ============================================================================
-# Functions specific to interacting with Anthropic's Claude API
-# Claude uses the official anthropic Python library rather than direct HTTP requests.
-# It has excellent support for images and PDFs through a content blocks structure.
-
 def call_claude_api(
     api_key: str,
     user_prompt: str,
@@ -444,62 +464,49 @@ def call_claude_api(
     """
     Make an API call to Anthropic Claude.
     
-    Claude uses the official anthropic Python library, which provides a cleaner
-    interface than raw HTTP requests. Key differences from other providers:
-    - Uses the anthropic library's client.messages.create() method
-    - Supports both "image" and "document" content blocks
-    - System instruction is a separate parameter, not part of messages
-    - Returns a structured response object that we convert to dict
-    
     Args:
         api_key: Anthropic API key
         user_prompt: The user's text prompt
         max_tokens: Maximum tokens to generate
         system_instruction: Optional system-level instruction string
-        inline_data: Optional file data dict with mime_type and base64 data
+        inline_data: Optional file data dict
         temperature: Sampling temperature
         top_p: Nucleus sampling parameter
         top_k: Top-k sampling parameter
-        model: Model identifier (e.g., claude-sonnet-4-20250514)
+        model: Model identifier
     
     Returns:
-        Dict containing the API response with content blocks and usage metadata
-    
+        Dict containing the API response
+        
     Raises:
         SystemExit: If the anthropic library is not installed
     """
-    # Check if anthropic library is installed - it's required for Claude API
     try:
         from anthropic import Anthropic
     except ImportError:
-        print("Error: anthropic package not installed. Install with: pip install anthropic")
-        sys.exit(1)
+        logger.error("anthropic package not installed. Install with: pip install anthropic")
+        sys.exit(ExitCode.API_ERROR.value)
     
-    # Initialize the Anthropic client with the API key
     client = Anthropic(api_key=api_key)
     
-    # Build content blocks array - Claude uses a blocks-based content structure
     content: List[Dict[str, Any]] = []
     
-    # Process file data if provided
     if inline_data:
         mime_type = inline_data["mime_type"]
-        data = inline_data["data"]  # Base64-encoded file content
+        data = inline_data["data"]
         
-        # Handle images - Claude has native image understanding
         if mime_type.startswith("image/"):
             content.append({
                 "type": "image",
                 "source": {
-                    "type": "base64",  # Image is provided as base64 string
+                    "type": "base64",
                     "media_type": mime_type,
                     "data": data
                 }
             })
-        # Handle PDFs - Claude has excellent PDF understanding with document type
         elif mime_type == "application/pdf":
             content.append({
-                "type": "document",  # Special document type for PDFs
+                "type": "document",
                 "source": {
                     "type": "base64",
                     "media_type": mime_type,
@@ -507,59 +514,47 @@ def call_claude_api(
                 }
             })
     
-    # Always append the user's text prompt to content blocks
     content.append({
         "type": "text",
         "text": user_prompt
     })
     
-    # Construct the messages array - Claude expects an array of message objects
-    # Each message has a role (user/assistant) and content (array of blocks)
     messages = [
         {
             "role": "user",
-            "content": content  # Can contain text, image, and document blocks
+            "content": content
         }
     ]
     
-    # Build keyword arguments for the API call
     kwargs = {
         "model": model,
-        "max_tokens": max_tokens,  # Required parameter for Claude
+        "max_tokens": max_tokens,
         "messages": messages,
         "temperature": temperature,
         "top_p": top_p,
         "top_k": top_k
     }
     
-    # Add system instruction if provided - separate from messages
     if system_instruction:
         kwargs["system"] = system_instruction
     
-    # Add metadata to prevent prompt caching if configured for privacy
     if not CLAUDE_CACHE_CONTROL:
-        # Note: As of current API, there's no explicit "do not cache" parameter
-        # But we can add metadata to indicate privacy preference
         kwargs["metadata"] = {"user_id": "privacy-mode"}
 
-    # Make the API call using the anthropic library
-    # This returns a Message object which we'll convert to a dict
     response = client.messages.create(**kwargs)
     
-    # Convert the response object to a dictionary for consistency with other providers
-    # Extract key fields from the structured response
     return {
-        "id": response.id,  # Unique ID for this response
-        "model": response.model,  # Model that generated the response
-        "role": response.role,  # Should be "assistant"
-        "content": [  # Array of content blocks in the response
+        "id": response.id,
+        "model": response.model,
+        "role": response.role,
+        "content": [
             {
                 "type": block.type,
                 "text": block.text if hasattr(block, 'text') else None
             } for block in response.content
         ],
-        "stop_reason": response.stop_reason,  # Why generation stopped (e.g., "end_turn")
-        "usage": {  # Token usage information
+        "stop_reason": response.stop_reason,
+        "usage": {
             "input_tokens": response.usage.input_tokens,
             "output_tokens": response.usage.output_tokens
         }
@@ -569,105 +564,124 @@ def call_claude_api(
 # ============================================================================
 # Main Execution
 # ============================================================================
-# The main function orchestrates the entire flow:
-# 1. Parse command-line arguments
-# 2. Read system instructions and user prompt from files
-# 3. Optionally read and encode a binary file (image, PDF, etc.)
-# 4. Select and call the appropriate AI provider's API
-# 5. Process and display the response
-
-def main():
+def main() -> None:
     """Main entry point for the script."""
     
     # Check if minimum required arguments are provided
     if len(sys.argv) < 5:
-        print("Usage: python generateResponse-unified.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]")
-        print("  ai_family: 'o' for OpenAI, 'g' for Gemini/Google, 'c' for Claude/Anthropic")
-        sys.exit(1)
+        logger.error(
+            "Usage: python msgModel.py <ai_family> <max_tokens> "
+            "<system_instruction_file> <user_prompt_file> [binary_file]"
+        )
+        logger.error(
+            "  ai_family: 'o' for OpenAI, 'g' for Gemini/Google, "
+            "'c' for Claude/Anthropic"
+        )
+        sys.exit(ExitCode.INVALID_ARGUMENTS.value)
     
     # Parse command-line arguments
-    # sys.argv[0] is the script name, so arguments start at index 1
-    ai_family = sys.argv[1].lower()  # Which AI provider to use
-    max_tokens = int(sys.argv[2])  # Maximum response length
-    system_instruction_file = sys.argv[3]  # File containing system-level instructions
-    user_prompt_file = sys.argv[4]  # File containing the user's prompt
+    try:
+        ai_provider = AIProvider.from_string(sys.argv[1])
+    except ValueError as e:
+        logger.error(str(e))
+        sys.exit(ExitCode.INVALID_ARGUMENTS.value)
     
-    # Validate that the AI family is one of the supported options
-    if ai_family not in ['o', 'g', 'c']:
-        print(f"Error: Invalid AI family '{ai_family}'. Use 'o' (OpenAI), 'g' (Gemini), or 'c' (Claude)")
-        sys.exit(1)
+    try:
+        max_tokens = int(sys.argv[2])
+        validate_max_tokens(max_tokens)
+    except ValueError as e:
+        logger.error(f"Invalid max_tokens value: {e}")
+        sys.exit(ExitCode.INVALID_ARGUMENTS.value)
+    
+    system_instruction_file = sys.argv[3]
+    user_prompt_file = sys.argv[4]
+    
+    # Validate files exist
+    try:
+        validate_file_exists(system_instruction_file, "System instruction file")
+        validate_file_exists(user_prompt_file, "User prompt file")
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        sys.exit(ExitCode.FILE_NOT_FOUND.value)
     
     # Read system instruction from file
-    # System instructions guide the AI's overall behavior and persona
-    with open(system_instruction_file, 'r') as f:
-        system_instruction_text = f.read()
+    try:
+        with open(system_instruction_file, 'r') as f:
+            system_instruction_text = f.read()
+    except IOError as e:
+        logger.error(f"Error reading system instruction file: {e}")
+        sys.exit(ExitCode.FILE_NOT_FOUND.value)
     
     # Read user prompt from file
-    # This is the main query or task for the AI to respond to
-    with open(user_prompt_file, 'r') as f:
-        user_prompt_text = f.read()
+    try:
+        with open(user_prompt_file, 'r') as f:
+            user_prompt_text = f.read()
+    except IOError as e:
+        logger.error(f"Error reading user prompt file: {e}")
+        sys.exit(ExitCode.FILE_NOT_FOUND.value)
     
-    # Read and process binary file if provided (5th argument is optional)
+    # Read and process binary file if provided
     inline_data = None
     binary_file_path = None
     if len(sys.argv) >= 6:
         binary_file_path = sys.argv[5]
         
-        # Detect the MIME type from the file extension
-        # This tells us what kind of file it is (image/png, application/pdf, etc.)
+        try:
+            validate_file_exists(binary_file_path, "Binary file")
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            sys.exit(ExitCode.FILE_NOT_FOUND.value)
+        
         mime_type, _ = mimetypes.guess_type(binary_file_path)
         if not mime_type:
-            # If MIME type can't be determined, use generic binary type
             mime_type = "application/octet-stream"
         
-        # Read the file in binary mode and encode it to base64
-        # Base64 encoding allows binary data to be transmitted as text in JSON
-        with open(binary_file_path, 'rb') as f:
-            binary_content = f.read()
-            encoded_data = base64.b64encode(binary_content).decode('utf-8')
+        try:
+            with open(binary_file_path, 'rb') as f:
+                binary_content = f.read()
+                encoded_data = base64.b64encode(binary_content).decode('utf-8')
+        except IOError as e:
+            logger.error(f"Error reading binary file: {e}")
+            sys.exit(ExitCode.FILE_NOT_FOUND.value)
         
-        # Store all file information in a dictionary
         inline_data = {
-            "mime_type": mime_type,  # Type of file
-            "data": encoded_data,  # Base64-encoded content
-            "filename": os.path.basename(binary_file_path),  # Just the filename, not full path
-            "path": binary_file_path,  # Full path (needed for OpenAI PDF upload)
+            "mime_type": mime_type,
+            "data": encoded_data,
+            "filename": os.path.basename(binary_file_path),
+            "path": binary_file_path,
         }
     
-    # Select the appropriate API key file based on which AI provider was chosen
-    # Each provider requires its own API key
-    if ai_family == 'o':
+    # Select the appropriate API key file
+    if ai_provider == AIProvider.OPENAI:
         api_key_file = OPENAI_API_KEY_FILE
-    elif ai_family == 'g':
+    elif ai_provider == AIProvider.GEMINI:
         api_key_file = GEMINI_API_KEY_FILE
-    else:  # ai_family == 'c'
+    else:  # AIProvider.CLAUDE
         api_key_file = CLAUDE_API_KEY_FILE
     
     # Read the API key from the file
-    # The file should contain only the API key string with no extra content
     try:
+        validate_file_exists(api_key_file, f"API key file")
         with open(api_key_file, 'r') as f:
-            API_KEY = f.read().strip()  # strip() removes any trailing whitespace/newlines
-    except FileNotFoundError:
-        print(f"Error: API key file '{api_key_file}' not found")
-        sys.exit(1)
+            API_KEY = f.read().strip()
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        sys.exit(ExitCode.AUTHENTICATION_ERROR.value)
+    except IOError as e:
+        logger.error(f"Error reading API key file: {e}")
+        sys.exit(ExitCode.AUTHENTICATION_ERROR.value)
     
-    # Initialize result variable - will hold the API response
     result = None
     
     # OPENAI FLOW
-    if ai_family == 'o':
-        uploaded_file_id = None  # Track uploaded file for cleanup
+    if ai_provider == AIProvider.OPENAI:
+        uploaded_file_id = None
         try:
-            # Special handling for PDFs with OpenAI
-            # OpenAI requires PDFs to be uploaded first and referenced by file_id
             if inline_data and inline_data.get("mime_type") == "application/pdf":
-                # Upload the PDF file and get a file_id back
                 file_id = upload_file_openai(API_KEY, inline_data["path"])
-                inline_data["file_id"] = file_id  # Store file_id for use in API call
-                uploaded_file_id = file_id  # Track for cleanup
+                inline_data["file_id"] = file_id
+                uploaded_file_id = file_id
             
-            # Make the API call to OpenAI
             result = call_openai_api(
                 api_key=API_KEY,
                 user_prompt=user_prompt_text,
@@ -679,20 +693,19 @@ def main():
                 n=OPENAI_N,
                 model=OPENAI_MODEL
             )
+        except requests.HTTPError as e:
+            logger.error(f"API request failed: {e}")
+            sys.exit(ExitCode.API_ERROR.value)
         finally:
-            # Clean up uploaded file for privacy if configured
             if uploaded_file_id and OPENAI_DELETE_FILES_AFTER_USE:
-                delete_file_openai(API_KEY, uploaded_file_id)
-                print(f"Privacy: Deleted uploaded file {uploaded_file_id} from OpenAI", file=sys.stderr)
+                if delete_file_openai(API_KEY, uploaded_file_id):
+                    logger.info(f"Privacy: Deleted uploaded file {uploaded_file_id} from OpenAI")
         
-        # Extract and display the response text from OpenAI's response structure
-        # OpenAI's response format can vary, so we check multiple possible locations
+        # Extract and display the response text
         response_text = None
         if "output_text" in result:
-            # Simpler response format
             response_text = result["output_text"]
         elif "output" in result and result["output"]:
-            # More complex response format with nested structure
             texts = []
             for item in result["output"]:
                 for c in item.get("content", []):
@@ -700,88 +713,79 @@ def main():
                         texts.append(c.get("text", ""))
             response_text = "\n".join(t for t in texts if t)
         
-        # Print extracted response text separately for easier reading
         if response_text:
             print("\n=== Response ===")
             print(response_text)
             print("\n=== Full API Response ===")
     
     # GEMINI FLOW
-    elif ai_family == 'g':
-        # Make the API call to Gemini
-        # Note: Gemini's system instruction needs to be wrapped in a specific format
-        result = call_gemini_api(
-            api_key=API_KEY,
-            gemini_user_prompt=user_prompt_text,
-            gemini_max_tokens=max_tokens,
-            gemini_system_instruction={"parts": [{"text": system_instruction_text}]},
-            gemini_inline_data=inline_data,
-            gemini_temperature=GEMINI_TEMPERATURE,
-            gemini_top_p=GEMINI_TOP_P,
-            gemini_top_k=GEMINI_TOP_K,
-            gemini_candidate_count=GEMINI_CANDIDATE_COUNT,
-            gemini_safety_threshold=GEMINI_SAFETY_THRESHOLD,
-            gemini_api_version=GEMINI_API_VERSION,
-            model=GEMINI_MODEL
-        )
+    elif ai_provider == AIProvider.GEMINI:
+        try:
+            result = call_gemini_api(
+                api_key=API_KEY,
+                gemini_user_prompt=user_prompt_text,
+                gemini_max_tokens=max_tokens,
+                gemini_system_instruction={"parts": [{"text": system_instruction_text}]},
+                gemini_inline_data=inline_data,
+                gemini_temperature=GEMINI_TEMPERATURE,
+                gemini_top_p=GEMINI_TOP_P,
+                gemini_top_k=GEMINI_TOP_K,
+                gemini_candidate_count=GEMINI_CANDIDATE_COUNT,
+                gemini_safety_threshold=GEMINI_SAFETY_THRESHOLD,
+                gemini_api_version=GEMINI_API_VERSION,
+                model=GEMINI_MODEL
+            )
+        except requests.HTTPError as e:
+            logger.error(f"API request failed: {e}")
+            sys.exit(ExitCode.API_ERROR.value)
         
-        # Check for binary outputs in Gemini response
-        # Gemini can return binary data (e.g., generated images) in its response
-        # We need to extract and save these to files
+        # Check for binary outputs
         if "candidates" in result:
             for idx, candidate in enumerate(result["candidates"]):
                 if "content" in candidate and "parts" in candidate["content"]:
-                    # Iterate through all parts in the response
                     for part_idx, part in enumerate(candidate["content"]["parts"]):
-                        # Check if this part contains binary data
                         if "inline_data" in part:
-                            # Generate a unique filename with timestamp
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                             mime_type = part["inline_data"].get("mime_type", "application/octet-stream")
-                            # Determine file extension from MIME type
                             extension = mimetypes.guess_extension(mime_type) or ".bin"
-                            # Create filename with candidate and part indices for uniqueness
                             filename = f"output_{timestamp}_c{idx}_p{part_idx}{extension}"
                             
-                            # Decode base64 data and write to file
                             binary_data = base64.b64decode(part["inline_data"]["data"])
                             with open(filename, 'wb') as f:
                                 f.write(binary_data)
-                            print(f"Binary output written to: {filename}")
+                            logger.info(f"Binary output written to: {filename}")
     
     # CLAUDE FLOW
-    else:  # ai_family == 'c'
-        # Make the API call to Claude
-        # Claude's API is the most straightforward thanks to the anthropic library
-        result = call_claude_api(
-            api_key=API_KEY,
-            user_prompt=user_prompt_text,
-            max_tokens=max_tokens,
-            system_instruction=system_instruction_text,
-            inline_data=inline_data,
-            temperature=CLAUDE_TEMPERATURE,
-            top_p=CLAUDE_TOP_P,
-            top_k=CLAUDE_TOP_K,
-            model=CLAUDE_MODEL
-        )
+    else:  # AIProvider.CLAUDE
+        try:
+            result = call_claude_api(
+                api_key=API_KEY,
+                user_prompt=user_prompt_text,
+                max_tokens=max_tokens,
+                system_instruction=system_instruction_text,
+                inline_data=inline_data,
+                temperature=CLAUDE_TEMPERATURE,
+                top_p=CLAUDE_TOP_P,
+                top_k=CLAUDE_TOP_K,
+                model=CLAUDE_MODEL
+            )
+        except requests.HTTPError as e:
+            logger.error(f"API request failed: {e}")
+            sys.exit(ExitCode.API_ERROR.value)
     
-    # Print the complete JSON response from the API
-    # This shows the full structure including metadata, tokens used, etc.
-    # Using indent=2 makes the JSON human-readable with proper formatting
+    # Print the complete JSON response
     print(json.dumps(result, indent=2))
     
-    # Print privacy information to stderr
-    print("\n=== Privacy Settings ===", file=sys.stderr)
-    if ai_family == 'o':
-        print(f"OpenAI - Data retention opt-out: {not OPENAI_STORE_DATA}", file=sys.stderr)
-        print(f"OpenAI - Auto-delete uploaded files: {OPENAI_DELETE_FILES_AFTER_USE}", file=sys.stderr)
-    elif ai_family == 'g':
-        print(f"Gemini - Caching disabled: {not GEMINI_CACHE_CONTROL}", file=sys.stderr)
+    # Print privacy information
+    logger.info("\n=== Privacy Settings ===")
+    if ai_provider == AIProvider.OPENAI:
+        logger.info(f"OpenAI - Data retention opt-out: {not OPENAI_STORE_DATA}")
+        logger.info(f"OpenAI - Auto-delete uploaded files: {OPENAI_DELETE_FILES_AFTER_USE}")
+    elif ai_provider == AIProvider.GEMINI:
+        logger.info(f"Gemini - Caching disabled: {not GEMINI_CACHE_CONTROL}")
     else:  # Claude
-        print(f"Claude - Caching disabled: {not CLAUDE_CACHE_CONTROL}", file=sys.stderr)
+        logger.info(f"Claude - Caching disabled: {not CLAUDE_CACHE_CONTROL}")
 
 
-# Standard Python idiom - only run main() if this script is executed directly
-# (not if it's imported as a module in another script)
 if __name__ == "__main__":
     main()
