@@ -59,50 +59,60 @@ chmod +x msgModel.py
 ### Basic Syntax
 
 ```bash
-./msgModel.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]
-```
-
-or
-
-```bash
-python msgModel.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]
+python msgModel.py -a <ai_family> -p <prompt_file> [-t <max_tokens>] [-i <instruction_file>] [-f <binary_file>]
 ```
 
 ### Parameters
 
-- **ai_family**: Choose the LLM provider
+**Required Arguments:**
+
+- **-a <ai_family>**: Choose the LLM provider
   - `o` - OpenAI (GPT models)
   - `g` - Gemini (Google)
   - `c` - Claude (Anthropic)
 
-- **max_tokens**: Maximum number of tokens to generate (e.g., 150, 1000, 5000)
+- **-p <prompt_file>**: Path to a text file containing your main prompt/question
 
-- **system_instruction_file**: Path to a text file containing system instructions (persona, behavior guidelines)
+**Optional Arguments:**
 
-- **user_prompt_file**: Path to a text file containing your main prompt/question
+- **-t <max_tokens>**: Maximum number of tokens to generate (default: 1000)
 
-- **binary_file** (optional): Path to an attachment (image, PDF, or text file)
+- **-i <instruction_file>**: Path to a text file containing system instructions (persona, behavior guidelines)
+
+- **-f <binary_file>**: Path to an attachment (image, PDF, or text file)
+
+**Note:** Arguments can be provided in any order.
 
 ### Examples
 
-**Simple text prompt with Claude:**
+**Simple text prompt with Gemini (using default max_tokens):**
 ```bash
-./msgModel.py c 500 max.instruction random.prompt
+python msgModel.py -a g -p random.prompt
+```
+
+**Text prompt with custom token limit:**
+```bash
+python msgModel.py -a c -p random.prompt -t 500
+```
+
+**With system instruction:**
+```bash
+python msgModel.py -a g -p random.prompt -i max.instruction
 ```
 
 **Image analysis with GPT-4:**
 ```bash
-./msgModel.py o 1000 analyst.instruction describe_image.prompt photo.jpg
+python msgModel.py -a o -t 1000 -p describe_image.prompt -i analyst.instruction -f photo.jpg
 ```
 
 **PDF document processing with Gemini:**
 ```bash
-./msgModel.py g 2000 summarizer.instruction analyze_doc.prompt report.pdf
+python msgModel.py -a g -t 2000 -p analyze_doc.prompt -i summarizer.instruction -f report.pdf
 ```
 
-**Multi-page document with Claude:**
+**Arguments in any order:**
 ```bash
-./msgModel.py c 5000 max.instruction random.prompt "document.pdf"
+python msgModel.py -p request.prompt -t 500 -a c -i max.instruction
 ```
 
 ### Sample Files
@@ -170,6 +180,11 @@ The script is configured by default to minimize data retention across all provid
 - `GEMINI_CACHE_CONTROL` - default: `False`
   - When `False`, disables caching for privacy
 
+### Default Values
+- `DEFAULT_MAX_TOKENS` - default: `1000`
+  - Used when the `-t` argument is not provided
+  - Controls the maximum response length for all providers
+
 **Privacy Note**: These settings prioritize data privacy by default. The script will display privacy settings at the end of each execution to confirm which protections are active.
 
 **Note**: All configuration values are required and used explicitly throughout the script. The functions do not assume any default values - all parameters are passed from the configuration constants.
@@ -178,6 +193,7 @@ The script is configured by default to minimize data retention across all provid
 
 The script follows Python best practices:
 
+- **Flexible argument parsing**: Named arguments with prefix flags (`-a`, `-p`, `-t`, `-i`, `-f`) that can be provided in any order
 - **Modular design**: Separate functions for each provider's API calls
 - **Type safety**: Comprehensive type hints using Python's `typing` module
 - **Enumerations**: `AIProvider` and `ExitCode` enums for type-safe constants
@@ -192,6 +208,7 @@ The script follows Python best practices:
   - `4`: Authentication error
 - **Documentation**: Comprehensive docstrings for all functions
 - **Privacy by default**: Data retention minimization built into the core logic
+- **Sensible defaults**: Optional arguments have reasonable defaults (e.g., `max_tokens=1000`)
 
 ## Supported File Types
 

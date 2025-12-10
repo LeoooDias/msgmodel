@@ -10,16 +10,81 @@ This script provides a single interface to interact with three major LLM provide
 - Google Gemini
 - Anthropic Claude
 
-Usage: python msgModel.py <ai_family> <max_tokens> <system_instruction_file> <user_prompt_file> [binary_file]
+Usage: python msgModel.py -a <ai_provider> -p <prompt_file> [-t <max_tokens>] [-i <instruction_file>] [-f <binary_file>]
 
-ai_family:
-    'o' for OpenAI
-    'g' for Gemini/Google
-    'c' for Claude/Anthropic
+Required arguments:
+    -a <ai_provider>          AI provider: 'o' (OpenAI), 'g' (Gemini), 'c' (Claude)
+    -p <prompt_file>        Path to file containing the user prompt
 
-Example:
-    python msgModel.py g 150 persona1.instruction request1.prompt document.pdf
+Optional arguments:
+    -t <max_tokens>         Maximum number of tokens to generate (default: 1000)
+    -i <instruction_file>   Path to file containing system instructions
+    -f <binary_file>        Path to binary file (image, PDF, etc.)
+
+Examples:
+    python msgModel.py -a g -p random.prompt
+    python msgModel.py -a o -t 1000 -p describe.prompt -i analyst.instruction -f photo.jpg
+    python msgModel.py -p request.prompt -t 500 -a c -i max.instruction
 """
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+"""
+Configuration constants for the script.
+
+All configuration options are defined here. These control API endpoints,
+model selection, generation parameters, and privacy settings.
+
+Customize these values as needed for your use case.
+"""
+
+# API key files (must exist in working directory)
+# These files should contain only the API key string, with no extra whitespace
+OPENAI_API_KEY_FILE = 'openai-api.key'
+GEMINI_API_KEY_FILE = 'gemini-api.key'
+CLAUDE_API_KEY_FILE = 'claude-api.key'
+
+# API URLs - Base endpoints for each LLM provider
+OPENAI_URL = "https://api.openai.com/v1/responses"
+OPENAI_FILES_URL = "https://api.openai.com/v1/files"
+GEMINI_URL = "https://generativelanguage.googleapis.com"
+CLAUDE_URL = "https://api.anthropic.com"
+
+# Model selection - Specifies which specific model variant to use from each provider
+# OpenAI - See options at https://platform.openai.com/docs/models
+OPENAI_MODEL = "gpt-5-nano"                 
+# Gemini - See options at https://ai.google.dev/gemini-api/docs/models
+GEMINI_MODEL = "gemini-2.5-flash"             
+# Claude - See options at https://platform.claude.com/docs/en/about-claude/models/overview 
+CLAUDE_MODEL = "claude-sonnet-4-20250514"   
+
+# OpenAI specific settings
+OPENAI_TEMPERATURE = 1.0
+OPENAI_TOP_P = 1.0
+OPENAI_N = 1
+
+# Gemini specific settings
+GEMINI_TEMPERATURE = 1.0
+GEMINI_TOP_P = 0.95
+GEMINI_TOP_K = 40
+GEMINI_CANDIDATE_COUNT = 1
+GEMINI_SAFETY_THRESHOLD = "BLOCK_NONE"
+GEMINI_API_VERSION = "v1beta"
+
+# Claude specific settings
+CLAUDE_TEMPERATURE = 1.0
+CLAUDE_TOP_P = 0.95
+CLAUDE_TOP_K = 40
+
+# Privacy and data retention settings
+OPENAI_STORE_DATA = False
+OPENAI_DELETE_FILES_AFTER_USE = True
+CLAUDE_CACHE_CONTROL = False
+GEMINI_CACHE_CONTROL = False
+
+# Default values for optional arguments
+DEFAULT_MAX_TOKENS = 1000  # Default maximum tokens if not specified as an argument
 
 # ============================================================================
 # IMPORTS
@@ -88,66 +153,9 @@ class AIProvider(Enum):
             if provider.value == value:
                 return provider
         raise ValueError(
-            f"Invalid AI family '{value}'. "
+            f"Invalid AI provider '{value}'. "
             f"Use 'o' (OpenAI), 'g' (Gemini), or 'c' (Claude)"
         )
-
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-"""
-Configuration constants for the script.
-
-All configuration options are defined here. These control API endpoints,
-model selection, generation parameters, and privacy settings.
-
-Customize these values as needed for your use case.
-"""
-
-# API key files (must exist in working directory)
-# These files should contain only the API key string, with no extra whitespace
-OPENAI_API_KEY_FILE = 'openai-api.key'
-GEMINI_API_KEY_FILE = 'gemini-api.key'
-CLAUDE_API_KEY_FILE = 'claude-api.key'
-
-# API URLs - Base endpoints for each LLM provider
-OPENAI_URL = "https://api.openai.com/v1/responses"
-OPENAI_FILES_URL = "https://api.openai.com/v1/files"
-GEMINI_URL = "https://generativelanguage.googleapis.com"
-CLAUDE_URL = "https://api.anthropic.com"
-
-# Model selection - Specifies which specific model variant to use from each provider
-# OpenAI - See options at https://platform.openai.com/docs/models
-OPENAI_MODEL = "gpt-5-nano"                 
-# Gemini - See options at https://ai.google.dev/gemini-api/docs/models
-GEMINI_MODEL = "gemini-2.5-flash"             
-# Claude - See options at https://platform.claude.com/docs/en/about-claude/models/overview 
-CLAUDE_MODEL = "claude-sonnet-4-20250514"   
-
-# OpenAI specific settings
-OPENAI_TEMPERATURE = 1.0
-OPENAI_TOP_P = 1.0
-OPENAI_N = 1
-
-# Gemini specific settings
-GEMINI_TEMPERATURE = 1.0
-GEMINI_TOP_P = 0.95
-GEMINI_TOP_K = 40
-GEMINI_CANDIDATE_COUNT = 1
-GEMINI_SAFETY_THRESHOLD = "BLOCK_NONE"
-GEMINI_API_VERSION = "v1beta"
-
-# Claude specific settings
-CLAUDE_TEMPERATURE = 1.0
-CLAUDE_TOP_P = 0.95
-CLAUDE_TOP_K = 40
-
-# Privacy and data retention settings
-OPENAI_STORE_DATA = False
-OPENAI_DELETE_FILES_AFTER_USE = True
-CLAUDE_CACHE_CONTROL = False
-GEMINI_CACHE_CONTROL = False
 
 
 # ============================================================================
@@ -182,6 +190,78 @@ def validate_file_exists(file_path: str, description: str) -> None:
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"{description} not found: {file_path}")
+
+
+def parse_arguments() -> Dict[str, Any]:
+    """
+    Parse command-line arguments with flexible ordering.
+    
+    Returns:
+        Dict containing parsed arguments: ai_provider, max_tokens, prompt_file,
+        instruction_file (optional), binary_file (optional)
+        
+    Raises:
+        ValueError: If required arguments are missing or invalid
+    """
+    args: Dict[str, Any] = {
+        'ai_provider': None,
+        'max_tokens': None,
+        'prompt_file': None,
+        'instruction_file': None,
+        'binary_file': None
+    }
+    
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        
+        if arg == '-a':
+            # AI provider
+            if i + 1 >= len(sys.argv):
+                raise ValueError("Missing value for -a argument")
+            args['ai_provider'] = sys.argv[i + 1]
+            i += 2
+        elif arg == '-t':
+            # Max tokens
+            if i + 1 >= len(sys.argv):
+                raise ValueError("Missing value for -t argument")
+            try:
+                args['max_tokens'] = int(sys.argv[i + 1])
+            except ValueError:
+                raise ValueError(f"Invalid max_tokens value: {sys.argv[i + 1]} (must be an integer)")
+            i += 2
+        elif arg == '-p':
+            # Prompt file
+            if i + 1 >= len(sys.argv):
+                raise ValueError("Missing value for -p argument")
+            args['prompt_file'] = sys.argv[i + 1]
+            i += 2
+        elif arg == '-i':
+            # Instruction file (optional)
+            if i + 1 >= len(sys.argv):
+                raise ValueError("Missing value for -i argument")
+            args['instruction_file'] = sys.argv[i + 1]
+            i += 2
+        elif arg == '-f':
+            # Binary file (optional)
+            if i + 1 >= len(sys.argv):
+                raise ValueError("Missing value for -f argument")
+            args['binary_file'] = sys.argv[i + 1]
+            i += 2
+        else:
+            raise ValueError(f"Unknown argument: {arg}")
+    
+    # Validate required arguments
+    if args['ai_provider'] is None:
+        raise ValueError("Missing required argument: -a <ai_provider>")
+    if args['prompt_file'] is None:
+        raise ValueError("Missing required argument: -p <prompt_file>")
+    
+    # Apply default for max_tokens if not provided
+    if args['max_tokens'] is None:
+        args['max_tokens'] = DEFAULT_MAX_TOKENS
+    
+    return args
 
 
 # ============================================================================
@@ -570,49 +650,53 @@ def call_claude_api(
 def main() -> None:
     """Main entry point for the script."""
     
-    # Check if minimum required arguments are provided
-    if len(sys.argv) < 5:
-        logger.error(
-            "Usage: python msgModel.py <ai_family> <max_tokens> "
-            "<system_instruction_file> <user_prompt_file> [binary_file]"
-        )
-        logger.error(
-            "  ai_family: 'o' for OpenAI, 'g' for Gemini/Google, "
-            "'c' for Claude/Anthropic"
-        )
-        sys.exit(ExitCode.INVALID_ARGUMENTS.value)
-    
     # Parse command-line arguments
     try:
-        ai_provider = AIProvider.from_string(sys.argv[1])
+        args = parse_arguments()
+    except ValueError as e:
+        logger.error(str(e))
+        logger.error(
+            "Usage: python msgModel.py -a <ai_provider> -p <prompt_file> "
+            "[-t <max_tokens>] [-i <instruction_file>] [-f <binary_file>]"
+        )
+        logger.error(
+            "  -a: AI provider ('o' for OpenAI, 'g' for Gemini, 'c' for Claude) [REQUIRED]"
+        )
+        logger.error("  -p: Path to user prompt file [REQUIRED]")
+        logger.error(f"  -t: Maximum tokens to generate (default: {DEFAULT_MAX_TOKENS}) [OPTIONAL]")
+        logger.error("  -i: Path to system instruction file [OPTIONAL]")
+        logger.error("  -f: Path to binary file - image, PDF, etc. [OPTIONAL]")
+        sys.exit(ExitCode.INVALID_ARGUMENTS.value)
+    
+    # Validate AI provider
+    try:
+        ai_provider = AIProvider.from_string(args['ai_provider'])
     except ValueError as e:
         logger.error(str(e))
         sys.exit(ExitCode.INVALID_ARGUMENTS.value)
     
+    # Validate max_tokens
+    max_tokens = args['max_tokens']
     try:
-        max_tokens = int(sys.argv[2])
         validate_max_tokens(max_tokens)
     except ValueError as e:
         logger.error(f"Invalid max_tokens value: {e}")
         sys.exit(ExitCode.INVALID_ARGUMENTS.value)
     
-    system_instruction_file = sys.argv[3]
-    user_prompt_file = sys.argv[4]
+    # Get file paths
+    user_prompt_file = args['prompt_file']
+    system_instruction_file = args['instruction_file']
+    binary_file_path = args['binary_file']
     
-    # Validate files exist
+    # Validate required files exist
     try:
-        validate_file_exists(system_instruction_file, "System instruction file")
         validate_file_exists(user_prompt_file, "User prompt file")
+        if system_instruction_file:
+            validate_file_exists(system_instruction_file, "System instruction file")
+        if binary_file_path:
+            validate_file_exists(binary_file_path, "Binary file")
     except FileNotFoundError as e:
         logger.error(str(e))
-        sys.exit(ExitCode.FILE_NOT_FOUND.value)
-    
-    # Read system instruction from file
-    try:
-        with open(system_instruction_file, 'r') as f:
-            system_instruction_text = f.read()
-    except IOError as e:
-        logger.error(f"Error reading system instruction file: {e}")
         sys.exit(ExitCode.FILE_NOT_FOUND.value)
     
     # Read user prompt from file
@@ -623,18 +707,19 @@ def main() -> None:
         logger.error(f"Error reading user prompt file: {e}")
         sys.exit(ExitCode.FILE_NOT_FOUND.value)
     
+    # Read system instruction from file (if provided)
+    system_instruction_text = None
+    if system_instruction_file:
+        try:
+            with open(system_instruction_file, 'r') as f:
+                system_instruction_text = f.read()
+        except IOError as e:
+            logger.error(f"Error reading system instruction file: {e}")
+            sys.exit(ExitCode.FILE_NOT_FOUND.value)
+    
     # Read and process binary file if provided
     inline_data = None
-    binary_file_path = None
-    if len(sys.argv) >= 6:
-        binary_file_path = sys.argv[5]
-        
-        try:
-            validate_file_exists(binary_file_path, "Binary file")
-        except FileNotFoundError as e:
-            logger.error(str(e))
-            sys.exit(ExitCode.FILE_NOT_FOUND.value)
-        
+    if binary_file_path:
         mime_type, _ = mimetypes.guess_type(binary_file_path)
         if not mime_type:
             mime_type = "application/octet-stream"
@@ -723,12 +808,17 @@ def main() -> None:
     
     # GEMINI FLOW
     elif ai_provider == AIProvider.GEMINI:
+        # Prepare system instruction for Gemini (only if provided)
+        gemini_system_instruction = None
+        if system_instruction_text:
+            gemini_system_instruction = {"parts": [{"text": system_instruction_text}]}
+        
         try:
             result = call_gemini_api(
                 api_key=API_KEY,
                 gemini_user_prompt=user_prompt_text,
                 gemini_max_tokens=max_tokens,
-                gemini_system_instruction={"parts": [{"text": system_instruction_text}]},
+                gemini_system_instruction=gemini_system_instruction,
                 gemini_inline_data=inline_data,
                 gemini_temperature=GEMINI_TEMPERATURE,
                 gemini_top_p=GEMINI_TOP_P,
