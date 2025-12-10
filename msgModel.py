@@ -24,7 +24,7 @@ Optional arguments:
 Examples:
     python msgModel.py -a g -p random.prompt
     python msgModel.py -a o -t 1000 -p describe.prompt -i analyst.instruction -f photo.jpg
-    python msgModel.py -p request.prompt -t 500 -a c -i max.instruction
+    python msgModel.py -p request.prompt -t 500 -a c -i persona.instruction
 """
 
 __version__ = "1.0.0"
