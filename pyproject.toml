@@ -7,9 +7,13 @@ name = "msgmodel"
 version = "2.0.0"
 description = "A unified Python library for interacting with LLM providers (OpenAI, Gemini, Claude)"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    {name = "Leo Dias"}
+    {name = "Leo Dias", email = "leoodiass@outlook.com"}
+]
+maintainers = [
+    {name = "Leo Dias", email = "leoodiass@outlook.com"}
 ]
 keywords = [
     "llm",
@@ -21,18 +25,23 @@ keywords = [
     "ai",
     "machine-learning",
     "chatbot",
+    "api",
+    "unified",
+    "wrapper",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
+    "Environment :: Console",
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -51,6 +60,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "build>=1.0.0",
+    "twine>=4.0.0",
 ]
 
 [project.scripts]
@@ -59,10 +70,18 @@ msgmodel = "msgmodel.__main__:main"
 [project.urls]
 Homepage = "https://github.com/LeoooDias/msgModel"
 Repository = "https://github.com/LeoooDias/msgModel"
+Documentation = "https://github.com/LeoooDias/msgModel#readme"
 Issues = "https://github.com/LeoooDias/msgModel/issues"
+Changelog = "https://github.com/LeoooDias/msgModel/releases"
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["msgmodel*"]
+
+[tool.setuptools.package-data]
+msgmodel = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

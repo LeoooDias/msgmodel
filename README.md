@@ -1,5 +1,9 @@
 # msgmodel
 
+[![PyPI version](https://badge.fury.io/py/msgmodel.svg)](https://badge.fury.io/py/msgmodel)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A unified Python library and CLI for interacting with multiple Large Language Model (LLM) providers.
 
 ## Overview
@@ -25,12 +29,20 @@ Use it as a library in your Python projects or as a CLI tool for quick interacti
 
 ## Installation
 
-### Prerequisites
+### From PyPI (Recommended)
 
-- Python 3.10 or higher
-- API keys from the providers you wish to use
+```bash
+# Basic installation
+pip install msgmodel
 
-### Install from source
+# With Claude support
+pip install msgmodel[claude]
+
+# With all optional dependencies
+pip install msgmodel[all]
+```
+
+### From Source
 
 ```bash
 # Clone the repository
@@ -47,11 +59,10 @@ pip install -e ".[claude]"
 pip install -e ".[dev]"
 ```
 
-### Install dependencies only
+### Prerequisites
 
-```bash
-pip install -r requirements.txt
-```
+- Python 3.10 or higher
+- API keys from the providers you wish to use
 
 ## Quick Start
 
@@ -203,6 +214,7 @@ msgModel/
 │   ├── core.py                  # Core query/stream functions
 │   ├── config.py                # Configuration dataclasses
 │   ├── exceptions.py            # Custom exceptions
+│   ├── py.typed                 # PEP 561 marker for typed package
 │   └── providers/               # Provider implementations
 │       ├── __init__.py
 │       ├── openai.py
@@ -213,8 +225,32 @@ msgModel/
 │   ├── test_core.py
 │   └── test_exceptions.py
 ├── pyproject.toml               # Package configuration
+├── LICENSE                      # MIT License
+├── MANIFEST.in                  # Distribution manifest
 ├── requirements.txt             # Dependencies
 └── README.md
+```
+
+## CLI Usage
+
+After installation, the `msgmodel` command is available:
+
+```bash
+# Basic usage
+msgmodel -p openai "What is Python?"
+
+# Or using python -m
+python -m msgmodel -p openai "What is Python?"
+
+# Provider shortcuts: o=openai, g=gemini, c=claude
+msgmodel -p g "Hello, Gemini!"
+msgmodel -p c "Hello, Claude!"
+
+# With streaming
+msgmodel -p openai "Tell me a story" --stream
+
+# From a file
+msgmodel -p gemini -f prompt.txt
 ```
 
 ## Running Tests
@@ -230,9 +266,28 @@ pytest
 pytest --cov=msgmodel
 ```
 
+## Building & Publishing
+
+```bash
+# Install build tools
+pip install build twine
+
+# Build the package
+python -m build
+
+# Check the distribution
+twine check dist/*
+
+# Upload to PyPI (requires PyPI account)
+twine upload dist/*
+
+# Upload to TestPyPI first (recommended)
+twine upload --repository testpypi dist/*
+```
+
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Author
 
