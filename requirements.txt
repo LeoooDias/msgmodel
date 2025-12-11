@@ -1,12 +1,17 @@
-# msgModel - Python Dependencies
+# msgmodel - Python Dependencies
 # 
-# Requires: Python 3.8 or higher
+# Requires: Python 3.10 or higher
 # Install with: pip install -r requirements.txt
 
 # HTTP library for making API requests to LLM providers
 requests>=2.31.0
 
-# Anthropic SDK for Claude API (if using Claude)
-# Note: The script uses the requests library directly, but you may want
-# the official SDK for additional features
-# anthropic>=0.18.0
+# Anthropic SDK for Claude API
+# Required only if using Claude provider
+anthropic>=0.18.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# mypy>=1.0.0
+# ruff>=0.1.0
