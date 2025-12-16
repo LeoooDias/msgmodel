@@ -128,19 +128,13 @@ class OpenAIProvider:
             mime_type = file_data["mime_type"]
             encoded_data = file_data.get("data", "")
             filename = file_data.get("filename", "input.bin")
-            file_id = file_data.get("file_id")
             
             if mime_type.startswith("image/"):
                 content.append({
-                    "type": "input_image",
-                    "image_url": f"data:{mime_type};base64,{encoded_data}"
-                })
-            elif mime_type == MIME_TYPE_PDF:
-                if not file_id:
-                    raise ProviderError("PDF provided without uploaded file_id")
-                content.append({
-                    "type": "input_file",
-                    "file_id": file_id,
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{encoded_data}"
+                    }
                 })
             elif mime_type.startswith("text/"):
                 try:
@@ -149,12 +143,12 @@ class OpenAIProvider:
                     decoded_text = ""
                 if decoded_text.strip():
                     content.append({
-                        "type": "input_text",
+                        "type": "text",
                         "text": f"(Contents of {filename}):\n\n{decoded_text}"
                     })
             else:
                 content.append({
-                    "type": "input_text",
+                    "type": "text",
                     "text": (
                         f"[Note: A file named '{filename}' with MIME type '{mime_type}' "
                         f"was provided. You may not be able to read it directly, but you "
@@ -163,7 +157,7 @@ class OpenAIProvider:
                 })
         
         content.append({
-            "type": "input_text",
+            "type": "text",
             "text": prompt
         })
         
@@ -294,27 +288,29 @@ class OpenAIProvider:
                             break
                         try:
                             chunk = json.loads(data)
-                            # Extract text from OpenAI streaming response
-                            # Format: {"type": "content_block_delta", "delta": {"type": "text", "text": "..."}}
-                            if chunk.get("type") == "content_block_delta":
-                                delta = chunk.get("delta", {})
-                                if isinstance(delta, dict) and delta.get("type") == "text":
-                                    text = delta.get("text", "")
-                                    if text:
-                                        chunks_received += 1
-                                        yield text
+                            # Extract text from OpenAI Chat Completions streaming response
+                            # Format: {"choices": [{"delta": {"content": "..."}}], ...}
+                            if "choices" in chunk and isinstance(chunk["choices"], list):
+                                for choice in chunk["choices"]:
+                                    if isinstance(choice, dict):
+                                        delta = choice.get("delta", {})
+                                        if isinstance(delta, dict):
+                                            text = delta.get("content", "")
+                                            if text:
+                                                chunks_received += 1
+                                                yield text
                         except json.JSONDecodeError:
                             continue
             
             if chunks_received == 0:
-                logger.error("No text chunks extracted from streaming response. Response format may not match OpenAI's content_block_delta structure or stream may have ended prematurely.")
+                logger.error("No text chunks extracted from streaming response. Response format may not match OpenAI Chat Completions delta structure or stream may have ended prematurely.")
         except Exception as e:
             raise StreamingError(f"Streaming interrupted: {e}")
     
     @staticmethod
     def extract_text(response: Dict[str, Any]) -> str:
         """
-        Extract text from an OpenAI Messages API response.
+        Extract text from an OpenAI Chat Completions response.
         
         Args:
             response: The raw API response
@@ -322,16 +318,15 @@ class OpenAIProvider:
         Returns:
             Extracted text content
         """
-        # OpenAI Messages API response format:
-        # {"content": [{"type": "text", "text": "..."}], ...}
-        if "content" in response and isinstance(response["content"], list):
-            texts = []
-            for item in response["content"]:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text = item.get("text", "")
-                    if text:
-                        texts.append(text)
-            if texts:
-                return "\n".join(texts)
+        # OpenAI Chat Completions response format:
+        # {"choices": [{"message": {"content": "..."}}], ...}
+        if "choices" in response and isinstance(response["choices"], list):
+            for choice in response["choices"]:
+                if isinstance(choice, dict):
+                    message = choice.get("message", {})
+                    if isinstance(message, dict):
+                        content = message.get("content", "")
+                        if content:
+                            return content
         
         return ""
