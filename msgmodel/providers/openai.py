@@ -176,22 +176,19 @@ class OpenAIProvider:
         file_data: Optional[Dict[str, Any]] = None,
         stream: bool = False
     ) -> Dict[str, Any]:
-        """Build the API request payload."""
+        """Build the API request payload for OpenAI Messages API."""
         content = self._build_content(prompt, file_data)
         
         payload: Dict[str, Any] = {
             "model": self.config.model,
-            "input": [{"role": "user", "content": content}],
-            "max_output_tokens": self.config.max_tokens,
+            "messages": [{"role": "user", "content": content}],
+            "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
         }
         
         if system_instruction:
-            payload["instructions"] = system_instruction
-        
-        if not self.config.store_data:
-            payload["store"] = False
+            payload["system"] = system_instruction
         
         if stream:
             payload["stream"] = True
@@ -297,34 +294,27 @@ class OpenAIProvider:
                             break
                         try:
                             chunk = json.loads(data)
-                            # Extract text from streaming response
-                            if "delta" in chunk:
-                                delta = chunk["delta"]
-                                if isinstance(delta, dict) and "text" in delta:
-                                    text = delta["text"]
+                            # Extract text from OpenAI streaming response
+                            # Format: {"type": "content_block_delta", "delta": {"type": "text", "text": "..."}}
+                            if chunk.get("type") == "content_block_delta":
+                                delta = chunk.get("delta", {})
+                                if isinstance(delta, dict) and delta.get("type") == "text":
+                                    text = delta.get("text", "")
                                     if text:
                                         chunks_received += 1
                                         yield text
-                            elif "output" in chunk:
-                                for item in chunk.get("output", []):
-                                    for c in item.get("content", []):
-                                        if c.get("type") == "output_text":
-                                            text = c.get("text", "")
-                                            if text:
-                                                chunks_received += 1
-                                                yield text
                         except json.JSONDecodeError:
                             continue
             
             if chunks_received == 0:
-                logger.error(f"No text chunks extracted from streaming response. Check that the API endpoint is correct and the response format is valid.")
+                logger.error("No text chunks extracted from streaming response. Response format may not match OpenAI's content_block_delta structure or stream may have ended prematurely.")
         except Exception as e:
             raise StreamingError(f"Streaming interrupted: {e}")
     
     @staticmethod
     def extract_text(response: Dict[str, Any]) -> str:
         """
-        Extract text from an OpenAI API response.
+        Extract text from an OpenAI Messages API response.
         
         Args:
             response: The raw API response
@@ -332,15 +322,16 @@ class OpenAIProvider:
         Returns:
             Extracted text content
         """
-        if "output_text" in response:
-            return response["output_text"]
-        
-        if "output" in response and response["output"]:
+        # OpenAI Messages API response format:
+        # {"content": [{"type": "text", "text": "..."}], ...}
+        if "content" in response and isinstance(response["content"], list):
             texts = []
-            for item in response["output"]:
-                for c in item.get("content", []):
-                    if c.get("type") == "output_text":
-                        texts.append(c.get("text", ""))
-            return "\n".join(t for t in texts if t)
+            for item in response["content"]:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text = item.get("text", "")
+                    if text:
+                        texts.append(text)
+            if texts:
+                return "\n".join(texts)
         
         return ""
