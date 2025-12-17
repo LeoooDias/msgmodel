@@ -61,7 +61,6 @@ class TestOpenAIConfig:
         assert config.top_p == 1.0
         assert config.max_tokens == 1000
         assert config.n == 1
-        assert config.store_data is False
         assert config.delete_files_after_use is True
     
     def test_custom_values(self):

@@ -8,6 +8,7 @@ Provides a unified interface to query any supported LLM provider.
 """
 
 import os
+import io
 import base64
 import mimetypes
 import logging
@@ -164,6 +165,46 @@ def _prepare_file_data(file_path: str) -> Dict[str, Any]:
     }
 
 
+def _prepare_file_like_data(file_like: io.BytesIO, filename: str = "upload.bin") -> Dict[str, Any]:
+    """
+    Prepare file-like object data for API submission.
+    
+    Processes a BytesIO object entirely in memory (never touches disk).
+    
+    Args:
+        file_like: An io.BytesIO object containing binary data
+        filename: Optional filename hint (defaults to 'upload.bin')
+        
+    Returns:
+        Dictionary containing file metadata and encoded data
+        
+    Raises:
+        FileError: If the file-like object cannot be read
+    """
+    try:
+        # Seek to beginning to ensure we read the full content
+        file_like.seek(0)
+        binary_content = file_like.read()
+        # Reset position for potential reuse by caller
+        file_like.seek(0)
+    except (AttributeError, IOError, OSError) as e:
+        raise FileError(f"Failed to read from file-like object: {e}")
+    
+    # Try to guess MIME type from filename, default to octet-stream
+    mime_type, _ = mimetypes.guess_type(filename)
+    if not mime_type:
+        mime_type = MIME_TYPE_OCTET_STREAM
+    
+    encoded_data = base64.b64encode(binary_content).decode("utf-8")
+    
+    return {
+        "mime_type": mime_type,
+        "data": encoded_data,
+        "filename": filename,
+        "is_file_like": True,  # Mark as in-memory file
+    }
+
+
 def _validate_max_tokens(max_tokens: int) -> None:
     """Validate max_tokens parameter."""
     if max_tokens < 1:
@@ -178,6 +219,7 @@ def query(
     api_key: Optional[str] = None,
     system_instruction: Optional[str] = None,
     file_path: Optional[str] = None,
+    file_like: Optional[io.BytesIO] = None,
     config: Optional[ProviderConfig] = None,
     max_tokens: Optional[int] = None,
     model: Optional[str] = None,
@@ -195,6 +237,7 @@ def query(
         api_key: API key (optional if set via env var or file)
         system_instruction: Optional system instruction/prompt
         file_path: Optional path to a file (image, PDF, etc.)
+        file_like: Optional file-like object (io.BytesIO) - must be seekable
         config: Optional provider-specific configuration object
         max_tokens: Override for max tokens (convenience parameter)
         model: Override for model (convenience parameter)
@@ -204,7 +247,7 @@ def query(
         LLMResponse containing the text response and metadata
     
     Raises:
-        ConfigurationError: For invalid configuration
+        ConfigurationError: For invalid configuration or file conflicts
         AuthenticationError: For API key issues
         FileError: For file-related issues
         APIError: For API call failures
@@ -214,17 +257,29 @@ def query(
         >>> response = query("openai", "Hello, world!")
         >>> print(response.text)
         
-        >>> # Query with custom config
-        >>> from msgmodel import query, OpenAIConfig
-        >>> config = OpenAIConfig(model="gpt-4o-mini", temperature=0.7)
-        >>> response = query("openai", "Hello!", config=config)
-        
-        >>> # Query with file attachment
+        >>> # Query with file attachment from disk
         >>> response = query("gemini", "Describe this image", file_path="photo.jpg")
+        
+        >>> # Query with in-memory file (privacy-focused, no disk access)
+        >>> import io
+        >>> file_obj = io.BytesIO(binary_content)
+        >>> response = query(
+        ...     "openai",
+        ...     "Analyze this document",
+        ...     file_like=file_obj,
+        ...     system_instruction="You are a document analyst"
+        ... )
     """
     # Normalize provider
     if isinstance(provider, str):
         provider = Provider.from_string(provider)
+    
+    # Check for mutually exclusive file parameters
+    if file_path is not None and file_like is not None:
+        raise ConfigurationError(
+            "Cannot specify both file_path and file_like. "
+            "Use file_path for disk files or file_like for in-memory BytesIO objects, not both."
+        )
     
     # Get API key
     key = _get_api_key(provider, api_key)
@@ -246,6 +301,8 @@ def query(
     file_data = None
     if file_path:
         file_data = _prepare_file_data(file_path)
+    elif file_like:
+        file_data = _prepare_file_like_data(file_like)
     
     # Check for unsupported providers
     if provider == Provider.CLAUDE:
@@ -309,6 +366,7 @@ def stream(
     api_key: Optional[str] = None,
     system_instruction: Optional[str] = None,
     file_path: Optional[str] = None,
+    file_like: Optional[io.BytesIO] = None,
     config: Optional[ProviderConfig] = None,
     max_tokens: Optional[int] = None,
     model: Optional[str] = None,
@@ -326,6 +384,7 @@ def stream(
         api_key: API key (optional if set via env var or file)
         system_instruction: Optional system instruction/prompt
         file_path: Optional path to a file (image, PDF, etc.)
+        file_like: Optional file-like object (io.BytesIO) - must be seekable
         config: Optional provider-specific configuration object
         max_tokens: Override for max tokens (convenience parameter)
         model: Override for model (convenience parameter)
@@ -335,19 +394,42 @@ def stream(
         Text chunks as they arrive from the API
     
     Raises:
-        ConfigurationError: For invalid configuration
+        ConfigurationError: For invalid configuration or file conflicts
         AuthenticationError: For API key issues
         FileError: For file-related issues
         APIError: For API call failures
         StreamingError: For streaming-specific issues
     
     Examples:
+        >>> # Stream response to prompt
         >>> for chunk in stream("openai", "Tell me a story"):
+        ...     print(chunk, end="", flush=True)
+        
+        >>> # Stream with file attachment from disk
+        >>> for chunk in stream("gemini", "Summarize this PDF", file_path="document.pdf"):
+        ...     print(chunk, end="", flush=True)
+        
+        >>> # Stream with in-memory file (privacy-focused, no disk access)
+        >>> import io
+        >>> file_obj = io.BytesIO(uploaded_file_bytes)
+        >>> for chunk in stream(
+        ...     "openai",
+        ...     "Analyze this uploaded file",
+        ...     file_like=file_obj,
+        ...     system_instruction="Provide detailed analysis"
+        ... ):
         ...     print(chunk, end="", flush=True)
     """
     # Normalize provider
     if isinstance(provider, str):
         provider = Provider.from_string(provider)
+    
+    # Check for mutually exclusive file parameters
+    if file_path is not None and file_like is not None:
+        raise ConfigurationError(
+            "Cannot specify both file_path and file_like. "
+            "Use file_path for disk files or file_like for in-memory BytesIO objects, not both."
+        )
     
     # Get API key
     key = _get_api_key(provider, api_key)
@@ -369,6 +451,8 @@ def stream(
     file_data = None
     if file_path:
         file_data = _prepare_file_data(file_path)
+    elif file_like:
+        file_data = _prepare_file_like_data(file_like)
     
     # Check for unsupported providers
     if provider == Provider.CLAUDE:
