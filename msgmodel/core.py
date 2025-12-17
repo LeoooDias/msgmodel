@@ -335,8 +335,8 @@ def query(
         assert isinstance(config, OpenAIConfig)
         prov = OpenAIProvider(key, config)
         try:
-            # Handle PDF upload for OpenAI
-            if file_data and file_data.get("mime_type") == MIME_TYPE_PDF:
+            # Handle PDF upload for OpenAI (disk files only, not BytesIO)
+            if file_data and file_data.get("mime_type") == MIME_TYPE_PDF and not file_data.get("is_file_like"):
                 file_id = prov.upload_file(file_data["path"])
                 file_data["file_id"] = file_id
             
@@ -497,8 +497,8 @@ def stream(
         assert isinstance(config, OpenAIConfig)
         prov = OpenAIProvider(key, config)
         try:
-            # Handle PDF upload for OpenAI
-            if file_data and file_data.get("mime_type") == MIME_TYPE_PDF:
+            # Handle PDF upload for OpenAI (disk files only, not BytesIO)
+            if file_data and file_data.get("mime_type") == MIME_TYPE_PDF and not file_data.get("is_file_like"):
                 file_id = prov.upload_file(file_data["path"])
                 file_data["file_id"] = file_id
             
