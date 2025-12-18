@@ -22,7 +22,7 @@ With custom configuration:
     >>> response = query("openai", "Hello!", config=config)
 """
 
-__version__ = "3.2.1"
+__version__ = "3.2.2"
 __author__ = "Leo Dias"
 
 # Core API
