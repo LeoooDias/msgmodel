@@ -9,10 +9,10 @@ A unified Python library and CLI for interacting with multiple Large Language Mo
 ## Overview
 
 `msgmodel` provides both a **Python library** and a **command-line interface** to interact with two major LLM providers:
-- **OpenAI** (GPT models) — Zero Data Retention enforced
-- **Google Gemini** (Paid tier) — Abuse-monitoring retention only
+- **OpenAI** (GPT models) — Zero Data Retention enforced automatically
+- **Google Gemini** (Paid tier only) — Abuse-monitoring retention only
 
-**Privacy Guarantee**: All files are processed via in-memory BytesIO objects with base64 inline encoding. No persistent file storage, no server-side uploads, no training data retention (when configured correctly).
+**Privacy Guarantee**: All files are processed via in-memory BytesIO objects with base64 inline encoding. No persistent file storage, no server-side uploads, no training data retention. OpenAI privacy is enforced automatically; Gemini privacy requires a paid API key (the only user requirement).
 
 ## Features
 
