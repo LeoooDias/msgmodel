@@ -7,7 +7,7 @@ Custom exceptions for the msgmodel library.
 All exceptions inherit from MsgModelError, allowing callers to catch
 all library-specific errors with a single except clause.
 
-Exception Hierarchy (v3.2.6+):
+Exception Hierarchy (v3.3.0+):
     MsgModelError (base)
     ├── ConfigurationError - Setup/config issues
     ├── ValidationError - Input validation failures  
@@ -263,11 +263,13 @@ class StreamingError(MsgModelError):
     
     Attributes:
         chunks_received: Number of chunks received before error (if known)
+        sample_chunks: Optional list of sample chunks for debugging
     
     Examples:
         - Connection interrupted during streaming
         - Invalid streaming response format
         - Timeout during streaming
+        - No chunks extracted from stream (format mismatch or premature termination)
     """
     
     def __init__(
@@ -275,7 +277,61 @@ class StreamingError(MsgModelError):
         message: str,
         *,
         chunks_received: Optional[int] = None,
+        sample_chunks: Optional[list] = None,
         cause: Optional[Exception] = None
     ):
         super().__init__(message, cause=cause)
         self.chunks_received = chunks_received
+        self.sample_chunks = sample_chunks or []
+    
+    @staticmethod
+    def detect_error_in_chunk(chunk: dict) -> Optional[dict]:
+        """
+        Detect if a streaming chunk contains an error structure.
+        
+        Recognizes error formats from both OpenAI and Gemini APIs:
+        - OpenAI: {"error": {"message": "...", "type": "..."}}
+        - Gemini: {"error": {"message": "...", "code": ..., "status": "..."}}
+        
+        Args:
+            chunk: The parsed JSON chunk from the stream
+            
+        Returns:
+            The error dict if found, None otherwise
+        """
+        if isinstance(chunk, dict) and "error" in chunk:
+            error_obj = chunk.get("error")
+            if isinstance(error_obj, dict):
+                return error_obj
+        return None
+    
+    @staticmethod
+    def is_rate_limit_error(error_obj: dict) -> bool:
+        """
+        Determine if an error object represents a rate limit error.
+        
+        Detects:
+        - OpenAI: error_type == "rate_limit_error"
+        - Gemini: status == "RESOURCE_EXHAUSTED" or "quota" in message
+        - Generic: "rate" or "quota" or "limit" in message (case-insensitive)
+        
+        Args:
+            error_obj: The error dict from a chunk
+            
+        Returns:
+            True if this is a rate limit error, False otherwise
+        """
+        if not isinstance(error_obj, dict):
+            return False
+        
+        # Check OpenAI error type
+        if error_obj.get("type") == "rate_limit_error":
+            return True
+        
+        # Check Gemini status
+        if error_obj.get("status") == "RESOURCE_EXHAUSTED":
+            return True
+        
+        # Check message content
+        message = (error_obj.get("message") or "").lower()
+        return any(keyword in message for keyword in ["rate", "quota", "limit", "exhausted"])

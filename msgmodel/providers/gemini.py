@@ -297,6 +297,8 @@ class GeminiProvider:
                 response_text=response.text
             )
         
+        chunks_received = 0
+        sample_chunks = []  # For debugging error messages
         try:
             for line in response.iter_lines():
                 if line:
@@ -305,8 +307,40 @@ class GeminiProvider:
                         data = line_text[6:]
                         try:
                             chunk = json.loads(data)
+                            
+                            # Store sample chunks for debugging (limit to first 3)
+                            if len(sample_chunks) < 3:
+                                sample_chunks.append(chunk)
+                            
+                            # Check for error in stream
+                            # Error structure: {"error": {"message": "...", "code": ...}}
+                            if "error" in chunk and isinstance(chunk.get("error"), dict):
+                                error_obj = chunk["error"]
+                                error_msg = error_obj.get("message", "Unknown error")
+                                error_code = error_obj.get("code", None)
+                                error_status = error_obj.get("status", "UNKNOWN")
+                                
+                                # Check if it's a rate limit error
+                                if (error_status == "RESOURCE_EXHAUSTED" or 
+                                    "rate" in error_msg.lower() or
+                                    "quota" in error_msg.lower()):
+                                    raise APIError(
+                                        f"Gemini rate limit/quota exceeded during streaming: {error_msg}",
+                                        status_code=429,
+                                        response_text=json.dumps(chunk),
+                                        provider="gemini"
+                                    )
+                                else:
+                                    raise APIError(
+                                        f"Gemini API error during streaming ({error_status}): {error_msg}",
+                                        status_code=error_code,
+                                        response_text=json.dumps(chunk),
+                                        provider="gemini"
+                                    )
+                            
                             text = self.extract_text(chunk)
                             if text:
+                                chunks_received += 1
                                 # v3.2.1: Support abort callback
                                 if on_chunk is not None:
                                     should_continue = on_chunk(text)
@@ -315,8 +349,28 @@ class GeminiProvider:
                                 yield text
                         except json.JSONDecodeError:
                             continue
+            
+            # Raise error if no chunks were received
+            if chunks_received == 0:
+                error_msg = (
+                    "No text chunks extracted from Gemini streaming response. "
+                    "Response format may not match Gemini API streaming response structure "
+                    "or stream may have ended prematurely."
+                )
+                if sample_chunks:
+                    error_msg += f"\n\nSample chunks received (for debugging):\n"
+                    for i, chunk in enumerate(sample_chunks, 1):
+                        error_msg += f"  Chunk {i}: {json.dumps(chunk)}\n"
+                
+                raise StreamingError(error_msg, chunks_received=0)
+        except StreamingError:
+            # Re-raise StreamingError as-is
+            raise
+        except APIError:
+            # Re-raise APIError as-is
+            raise
         except Exception as e:
-            raise StreamingError(f"Streaming interrupted: {e}")
+            raise StreamingError(f"Streaming interrupted: {e}", chunks_received=chunks_received)
     
     @staticmethod
     def extract_text(response: Dict[str, Any]) -> str:

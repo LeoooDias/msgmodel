@@ -299,6 +299,7 @@ class OpenAIProvider:
             )
         
         chunks_received = 0
+        sample_chunks = []  # For debugging error messages
         try:
             for line in response.iter_lines():
                 if line:
@@ -309,6 +310,34 @@ class OpenAIProvider:
                             break
                         try:
                             chunk = json.loads(data)
+                            
+                            # Store sample chunks for debugging (limit to first 3)
+                            if len(sample_chunks) < 3:
+                                sample_chunks.append(chunk)
+                            
+                            # Check for error in stream (e.g., rate limiting)
+                            # Error structure: {"error": {"message": "...", "type": "..."}}
+                            if "error" in chunk and isinstance(chunk.get("error"), dict):
+                                error_obj = chunk["error"]
+                                error_msg = error_obj.get("message", "Unknown error")
+                                error_type = error_obj.get("type", "unknown")
+                                
+                                # Check if it's a rate limit error
+                                if error_type == "rate_limit_error" or "rate_limit" in error_msg.lower():
+                                    raise APIError(
+                                        f"OpenAI rate limit exceeded during streaming: {error_msg}",
+                                        status_code=429,
+                                        response_text=json.dumps(chunk),
+                                        provider="openai"
+                                    )
+                                else:
+                                    raise APIError(
+                                        f"OpenAI API error during streaming ({error_type}): {error_msg}",
+                                        status_code=None,
+                                        response_text=json.dumps(chunk),
+                                        provider="openai"
+                                    )
+                            
                             # Extract text from OpenAI Chat Completions streaming response
                             # Format: {"choices": [{"delta": {"content": "..."}}], ...}
                             if "choices" in chunk and isinstance(chunk["choices"], list):
@@ -328,10 +357,27 @@ class OpenAIProvider:
                         except json.JSONDecodeError:
                             continue
             
+            # Raise error if no chunks were received
             if chunks_received == 0:
-                logger.error("No text chunks extracted from streaming response. Response format may not match OpenAI Chat Completions delta structure or stream may have ended prematurely.")
+                error_msg = (
+                    "No text chunks extracted from OpenAI streaming response. "
+                    "Response format may not match OpenAI Chat Completions delta structure "
+                    "or stream may have ended prematurely."
+                )
+                if sample_chunks:
+                    error_msg += f"\n\nSample chunks received (for debugging):\n"
+                    for i, chunk in enumerate(sample_chunks, 1):
+                        error_msg += f"  Chunk {i}: {json.dumps(chunk)}\n"
+                
+                raise StreamingError(error_msg, chunks_received=0)
+        except StreamingError:
+            # Re-raise StreamingError as-is
+            raise
+        except APIError:
+            # Re-raise APIError as-is
+            raise
         except Exception as e:
-            raise StreamingError(f"Streaming interrupted: {e}")
+            raise StreamingError(f"Streaming interrupted: {e}", chunks_received=chunks_received)
     
     @staticmethod
     def extract_text(response: Dict[str, Any]) -> str:
