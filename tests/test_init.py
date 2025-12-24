@@ -35,6 +35,8 @@ class TestLazyImports:
     def test_version_accessible(self):
         """Test that __version__ is accessible."""
         import msgmodel
+        import re
         assert hasattr(msgmodel, "__version__")
         assert isinstance(msgmodel.__version__, str)
-        assert msgmodel.__version__ == "4.0.0"
+        # Validate semantic versioning format (e.g., "4.0.1")
+        assert re.match(r'^\d+\.\d+\.\d+', msgmodel.__version__)

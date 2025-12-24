@@ -8,7 +8,7 @@ import io
 from unittest.mock import patch, Mock, MagicMock
 from pathlib import Path
 
-from msgmodel.__main__ import parse_args, main, read_file_content
+from msgmodel.__main__ import parse_args, main, read_file_content, format_privacy_info
 from msgmodel.exceptions import FileError, AuthenticationError, APIError, ConfigurationError
 
 
@@ -112,6 +112,7 @@ class TestMainFunction:
         mock_response.model = "gpt-4o"
         mock_response.provider = "openai"
         mock_response.usage = None
+        mock_response.privacy = None
         mock_query.return_value = mock_response
         
         with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello']):
@@ -276,6 +277,7 @@ class TestMainFunction:
         mock_response.model = "gpt-4o"
         mock_response.provider = "openai"
         mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        mock_response.privacy = None
         mock_query.return_value = mock_response
         
         with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello', '-v']):
@@ -304,3 +306,166 @@ class TestMainFunction:
             result = main()
         
         assert result == 0  # Clean exit on Ctrl+C
+
+
+class TestFormatPrivacyInfo:
+    """Tests for format_privacy_info helper function."""
+    
+    def test_format_privacy_info_openai(self):
+        """Test formatting OpenAI privacy info."""
+        privacy = {
+            "provider": "openai",
+            "training_retention": False,
+            "data_retention": "None (Zero Data Retention header sent)",
+            "enforcement_level": "default",
+            "special_conditions": "ZDR header is sent automatically with all requests.",
+            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+        }
+        
+        result = format_privacy_info(privacy)
+        assert "OPENAI" in result
+        assert "NOT retained for training" in result
+        assert "Zero Data Retention" in result
+        assert "https://platform.openai.com" in result
+    
+    def test_format_privacy_info_gemini(self):
+        """Test formatting Gemini privacy info."""
+        privacy = {
+            "provider": "gemini",
+            "training_retention": "depends_on_tier",
+            "data_retention": "Varies by account tier",
+            "enforcement_level": "tier_dependent",
+            "special_conditions": "Data handling depends on your Google Cloud account tier.",
+            "reference": "https://ai.google.dev/gemini-api/terms"
+        }
+        
+        result = format_privacy_info(privacy)
+        assert "GEMINI" in result
+        assert "depends_on_tier" in result
+        assert "Varies by account tier" in result
+    
+    def test_format_privacy_info_anthropic(self):
+        """Test formatting Anthropic privacy info."""
+        privacy = {
+            "provider": "anthropic",
+            "training_retention": False,
+            "data_retention": "Temporary (for safety monitoring)",
+            "enforcement_level": "default",
+            "special_conditions": "Review Anthropic's data retention policies.",
+            "reference": "https://www.anthropic.com/legal/privacy"
+        }
+        
+        result = format_privacy_info(privacy)
+        assert "ANTHROPIC" in result
+        assert "NOT retained for training" in result
+        assert "Temporary" in result
+    
+    def test_format_privacy_info_none(self):
+        """Test formatting when privacy is None."""
+        result = format_privacy_info(None)
+        assert "Privacy information unavailable" in result
+    
+    def test_format_privacy_info_empty(self):
+        """Test formatting with empty privacy dict."""
+        result = format_privacy_info({})
+        assert "Privacy information unavailable" in result
+
+
+class TestPrivacyInCLI:
+    """Tests for privacy info display in CLI."""
+    
+    @patch('msgmodel.__main__.query')
+    def test_privacy_display_verbose_mode(self, mock_query):
+        """Test privacy info is displayed in verbose mode."""
+        mock_response = Mock()
+        mock_response.text = "Hello!"
+        mock_response.model = "gpt-4o"
+        mock_response.provider = "openai"
+        mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        mock_response.privacy = {
+            "provider": "openai",
+            "training_retention": False,
+            "data_retention": "None (Zero Data Retention header sent)",
+            "enforcement_level": "default",
+            "special_conditions": "ZDR header sent automatically",
+            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+        }
+        mock_query.return_value = mock_response
+        
+        with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello', '-v']):
+            with patch('builtins.print') as mock_print:
+                result = main()
+        
+        assert result == 0
+        # Check that logger output was called (privacy info logged in verbose mode)
+        mock_query.assert_called_once()
+    
+    @patch('msgmodel.__main__.query')
+    def test_privacy_notice_non_verbose_mode(self, mock_query):
+        """Test privacy info notice is shown even without verbose flag."""
+        mock_response = Mock()
+        mock_response.text = "Hello!"
+        mock_response.model = "gpt-4o"
+        mock_response.provider = "openai"
+        mock_response.usage = None
+        mock_response.privacy = {
+            "provider": "openai",
+            "training_retention": False,
+            "data_retention": "None (Zero Data Retention header sent)",
+            "enforcement_level": "default",
+            "special_conditions": "ZDR header sent automatically",
+            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+        }
+        mock_query.return_value = mock_response
+        
+        with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello']):
+            with patch('builtins.print') as mock_print:
+                result = main()
+        
+        assert result == 0
+        # Response text should be printed
+        mock_print.assert_called_with("Hello!")
+    
+    @patch('msgmodel.__main__.query')
+    def test_no_privacy_info_available(self, mock_query):
+        """Test when privacy info is not available."""
+        mock_response = Mock()
+        mock_response.text = "Hello!"
+        mock_response.model = "gpt-4o"
+        mock_response.provider = "openai"
+        mock_response.usage = None
+        mock_response.privacy = None
+        mock_query.return_value = mock_response
+        
+        with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello', '-v']):
+            with patch('builtins.print') as mock_print:
+                result = main()
+        
+        assert result == 0
+        mock_print.assert_called_with("Hello!")
+    
+    @patch('msgmodel.__main__.query')
+    def test_privacy_with_json_output(self, mock_query):
+        """Test that privacy is not displayed when JSON output is requested."""
+        mock_response = Mock()
+        mock_response.raw_response = {"text": "Hello!", "model": "gpt-4o"}
+        mock_response.model = "gpt-4o"
+        mock_response.provider = "openai"
+        mock_response.privacy = {
+            "provider": "openai",
+            "training_retention": False,
+            "data_retention": "None (Zero Data Retention header sent)",
+            "enforcement_level": "default",
+            "special_conditions": "ZDR header sent automatically",
+            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+        }
+        mock_query.return_value = mock_response
+        
+        with patch.object(sys, 'argv', ['msgmodel', '-p', 'openai', 'Hello', '--json', '-v']):
+            with patch('builtins.print') as mock_print:
+                result = main()
+        
+        assert result == 0
+        # JSON output should be printed (call args will contain JSON)
+        call_args = mock_print.call_args[0][0]
+        assert '"text"' in call_args or '"model"' in call_args

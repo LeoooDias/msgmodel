@@ -14,6 +14,7 @@ import sys
 import io
 import logging
 from pathlib import Path
+from typing import Optional, Dict, Any
 
 from . import (
     __version__,
@@ -37,6 +38,51 @@ logging.basicConfig(
     format="%(levelname)s: %(message)s",
     stream=sys.stderr,
 )
+logger = logging.getLogger(__name__)
+
+
+def format_privacy_info(privacy: Optional[Dict[str, Any]]) -> str:
+    """
+    Format privacy metadata into a human-readable string.
+    
+    Args:
+        privacy: Privacy metadata dictionary from LLMResponse
+        
+    Returns:
+        Formatted string with privacy information
+    """
+    if not privacy:
+        return "Privacy information unavailable"
+    
+    lines = ["Privacy Guarantee for this Request:"]
+    
+    if "provider" in privacy:
+        provider_name = privacy["provider"].upper()
+        lines.append(f"  Provider: {provider_name}")
+    
+    if "training_retention" in privacy:
+        training = privacy["training_retention"]
+        if isinstance(training, bool):
+            training_str = "NOT retained for training" if not training else "May be retained for training"
+        else:
+            training_str = str(training)
+        lines.append(f"  Training Retention: {training_str}")
+    
+    if "data_retention" in privacy:
+        lines.append(f"  Data Retention: {privacy['data_retention']}")
+    
+    if "enforcement_level" in privacy:
+        lines.append(f"  Enforcement Level: {privacy['enforcement_level']}")
+    
+    if "special_conditions" in privacy:
+        lines.append(f"  Special Conditions: {privacy['special_conditions']}")
+    
+    if "reference" in privacy:
+        lines.append(f"  Reference: {privacy['reference']}")
+    
+    return "\n".join(lines)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -207,6 +253,13 @@ def main() -> int:
                     logger.info(f"Provider: {response.provider}")
                     if response.usage:
                         logger.info(f"Usage: {response.usage}")
+                    if response.privacy:
+                        privacy_str = format_privacy_info(response.privacy)
+                        logger.info(privacy_str)
+                else:
+                    # Always show privacy info notice, even without verbose flag
+                    if response.privacy:
+                        logger.info("Use --verbose to see privacy guarantees for this provider")
         
         return 0
         

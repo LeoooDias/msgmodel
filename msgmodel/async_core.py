@@ -195,6 +195,7 @@ async def _aquery_openai(
     
     text = prov.extract_text(raw_response)
     usage = raw_response.get("usage")
+    privacy_metadata = OpenAIProvider.get_privacy_info()
     
     return LLMResponse(
         text=text,
@@ -202,6 +203,7 @@ async def _aquery_openai(
         model=config.model,
         provider="openai",
         usage=usage,
+        privacy=privacy_metadata,
     )
 
 
@@ -273,6 +275,7 @@ async def _aquery_gemini(
     
     text = prov.extract_text(raw_response)
     usage = raw_response.get("usage")
+    privacy_metadata = GeminiProvider.get_privacy_info()
     
     return LLMResponse(
         text=text,
@@ -280,6 +283,7 @@ async def _aquery_gemini(
         model=config.model,
         provider="gemini",
         usage=usage,
+        privacy=privacy_metadata,
     )
 
 
