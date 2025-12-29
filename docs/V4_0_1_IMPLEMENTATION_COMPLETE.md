@@ -45,7 +45,7 @@ response.privacy  # -> {"provider": "openai", "training_retention": False, ...}
 
 ### 2. CLI Implementation (`msgmodel/__main__.py`)
 
-**Problem**: Users had no way to see privacy guarantees from the command line.
+**Problem**: Users had no way to see privacy information from the command line.
 
 **Changes**:
 1. Added `format_privacy_info(privacy: Optional[Dict[str, Any]]) -> str` helper function
@@ -67,7 +67,7 @@ $ python -m msgmodel -p openai "Hello!" --verbose
 Hello!
 [INFO] Model: gpt-4o
 [INFO] Provider: openai
-[INFO] Use --verbose to see privacy guarantees for this provider
+[INFO] Use --verbose to see privacy information for this provider
 ```
 
 ---

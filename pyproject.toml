@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "msgmodel"
-version = "4.1.0"
+version = "4.1.1"
 description = "Unified Python library for interacting with LLM providers (OpenAI, Gemini, Anthropic Claude). Simple, consistent syntax with stateless design."
 readme = "README.md"
 license = "MIT"

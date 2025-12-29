@@ -4,7 +4,7 @@
 
 ✅ **No breaking changes**  
 ✅ **Privacy info now available in async API**  
-✅ **CLI can display privacy guarantees**  
+✅ **CLI can display privacy information**  
 ✅ **100% test coverage maintained**
 
 ---
@@ -35,7 +35,7 @@ asyncio.run(main())
 
 ### CLI (New in 4.0.1)
 ```bash
-# Show privacy guarantees
+# Show privacy information
 python -m msgmodel -p openai "Hello" --verbose
 
 # Output shows:
@@ -51,12 +51,12 @@ python -m msgmodel -p openai "Hello" --verbose
 
 ```python
 response.privacy = {
-    "provider": "openai",                              # str
-    "training_retention": False,                       # bool or "depends_on_tier"
-    "data_retention": "None (ZDR header sent)",       # str
-    "enforcement_level": "default",                    # str
-    "special_conditions": "ZDR header sent auto...",  # str
-    "reference": "https://platform.openai.com/..."    # URL
+    "provider": "openai",                                      # str
+    "training_retention": False,                               # bool or "depends_on_tier"
+    "data_retention": "Standard API: ~30 days (ZDR for zero)", # str
+    "enforcement_level": "api_policy",                         # str
+    "special_conditions": "Training opt-out automatic...",     # str
+    "reference": "https://platform.openai.com/..."             # URL
 }
 ```
 
@@ -64,11 +64,13 @@ response.privacy = {
 
 ## Provider Privacy Summary
 
-| Provider | Training? | Retention | Recommendation |
-|----------|-----------|-----------|-----------------|
-| 🔒 **OpenAI** | ❌ No | None | ✅ Most private |
-| ⚠️ **Gemini** | Depends | Tier-dependent | Use paid tier for privacy |
-| 🔐 **Anthropic** | ❌ No | Temporary | ✅ Good privacy |
+| Provider | What msgmodel does | Training | Retention |
+|----------|-------------------|----------|------------|
+| 🔒 **OpenAI** | Sends ZDR header | ❌ No (auto) | ~30 days (ZDR requires eligibility) |
+| ⚠️ **Gemini** | Inline encoding only | Depends on YOUR tier | Tier-dependent |
+| 🔐 **Anthropic** | Standard API | ❌ No (default) | Temporary |
+
+**Note**: msgmodel sends privacy-preserving signals where available, but cannot verify your account status or override provider policies.
 
 ---
 

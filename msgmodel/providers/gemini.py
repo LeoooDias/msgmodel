@@ -566,9 +566,9 @@ class GeminiProvider:
         return {
             "provider": "gemini",
             "training_retention": "depends_on_tier",
-            "data_retention": "Varies by account tier (paid: ~24-72 hours for abuse monitoring; free: may be retained for training)",
+            "data_retention": "Paid: ~24-72h (abuse monitoring) / Free: may be used for training",
             "enforcement_level": "tier_dependent",
-            "provider_policy": "Gemini paid tier does not use data for model training. Free tier terms differ - review Google's policies.",
-            "special_conditions": "Data handling depends on your Google Cloud account tier. Paid tier recommended for privacy-sensitive use cases.",
+            "provider_policy": "Data handling depends on YOUR Google account tier. msgmodel cannot detect or control this.",
+            "special_conditions": "Paid tier (Cloud Billing): no training. Free tier: data may be used for training. Verify your tier with Google.",
             "reference": "https://ai.google.dev/gemini-api/terms"
         }

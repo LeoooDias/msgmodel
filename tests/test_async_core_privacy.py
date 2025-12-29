@@ -39,7 +39,7 @@ class TestAsyncPrivacyMetadata:
                 assert result.privacy is not None
                 assert result.privacy["provider"] == "openai"
                 assert result.privacy["training_retention"] is False
-                assert "Zero Data Retention" in result.privacy["data_retention"]
+                assert "ZDR" in result.privacy["data_retention"]
                 assert "https://platform.openai.com" in result.privacy["reference"]
     
     @pytest.mark.asyncio

@@ -521,5 +521,5 @@ class TestOpenAIPrivacyInfo:
         
         assert info["provider"] == "openai"
         assert info["training_retention"] is False
-        assert "X-OpenAI-No-Store" in info["provider_policy"]
+        assert "not use API data for model training" in info["provider_policy"]
         assert "reference" in info

@@ -85,8 +85,10 @@ class OpenAIConfig:
     """
     Configuration for OpenAI API calls.
     
-    By default, the X-OpenAI-No-Store header is sent to opt out of data retention
-    for model training. See: https://platform.openai.com/docs/guides/zero-data-retention
+    OpenAI does not use API data for model training (standard policy for all API users).
+    The X-OpenAI-No-Store header is also sent to request zero data storage, but actual
+    Zero Data Retention (ZDR) requires separate eligibility from OpenAI.
+    See: https://platform.openai.com/docs/models/how-we-use-your-data
     
     Attributes:
         model: Model identifier (e.g., 'gpt-4o', 'gpt-4o-mini')
@@ -112,10 +114,13 @@ class GeminiConfig:
     """
     Configuration for Google Gemini API calls.
     
-    Data handling varies by account tier:
-    - Paid tier: Data is NOT used for model training; retained temporarily for abuse detection
-    - Free tier: Google may retain data for model training. Review Google's terms.
+    IMPORTANT: Data handling depends entirely on your Google account tier.
+    msgmodel cannot detect or control which tier you're using.
     
+    - Paid tier (Cloud Billing): Data NOT used for training; temporary abuse monitoring only
+    - Free tier: Data MAY be used for model training
+    
+    Verify your tier directly with Google if privacy is important for your use case.
     See: https://ai.google.dev/gemini-api/terms
     
     Attributes:

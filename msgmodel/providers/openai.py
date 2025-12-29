@@ -5,9 +5,10 @@ msgmodel.providers.openai
 OpenAI API provider implementation.
 
 DATA HANDLING:
-- The X-OpenAI-No-Store header is sent by default with all requests.
-- This header instructs OpenAI not to store inputs and outputs for service improvements.
-- See: https://platform.openai.com/docs/guides/zero-data-retention
+- OpenAI does not use API data for model training (standard policy since March 2023).
+- The X-OpenAI-No-Store header is sent by default to request zero data storage.
+- Zero Data Retention (ZDR) requires separate eligibility from OpenAI.
+- See: https://platform.openai.com/docs/models/how-we-use-your-data
 
 FILE UPLOADS:
 - All file uploads are via inline base64-encoding in prompts (no Files API)
@@ -54,8 +55,8 @@ class OpenAIProvider:
         """
         Build HTTP headers for OpenAI API requests.
         
-        Includes the X-OpenAI-No-Store header by default, which opts out of
-        data retention for model training.
+        Includes the X-OpenAI-No-Store header by default to request zero data storage.
+        Note: Training opt-out is automatic; ZDR (zero storage) requires eligibility.
         
         Returns:
             Dictionary of HTTP headers
@@ -63,7 +64,7 @@ class OpenAIProvider:
         headers: Dict[str, str] = {
             "Content-Type": MIME_TYPE_JSON,
             "Authorization": f"Bearer {self.api_key}",
-            "X-OpenAI-No-Store": "true"  # Opt out of data retention by default
+            "X-OpenAI-No-Store": "true"  # Request zero storage (ZDR eligibility required)
         }
         
         return headers
@@ -546,9 +547,9 @@ class OpenAIProvider:
         return {
             "provider": "openai",
             "training_retention": False,
-            "data_retention": "None (Zero Data Retention header sent)",
-            "enforcement_level": "default",
-            "provider_policy": "X-OpenAI-No-Store header sent by default, opting out of data retention for model training.",
-            "special_conditions": "ZDR header is sent automatically with all requests.",
-            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+            "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+            "enforcement_level": "api_policy",
+            "provider_policy": "OpenAI does not use API data for model training (standard policy). X-OpenAI-No-Store header sent for ZDR-eligible accounts.",
+            "special_conditions": "Training opt-out is automatic for all API users. Zero Data Retention (no storage) requires separate eligibility from OpenAI.",
+            "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
         }

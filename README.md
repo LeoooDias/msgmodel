@@ -9,11 +9,22 @@ A unified Python library and CLI for interacting with multiple Large Language Mo
 ## Overview
 
 `msgmodel` provides both a **Python library** and a **command-line interface** to interact with major LLM providers:
-- **OpenAI** (GPT models) — Zero Data Retention available via automatic header
-- **Google Gemini** (Paid tier recommended) — Configurable data policies
-- **Anthropic Claude** — Standard API data handling
+- **OpenAI** (GPT models)
+- **Google Gemini**
+- **Anthropic Claude**
 
-**Core Principle**: msgmodel itself is entirely stateless and ephemeral—it never retains your data. Provider-level data handling varies; see the Data Retention section for details on each provider's policies and available options.
+### Privacy by Default
+
+**msgmodel takes a privacy-preserving stance by default.** Where providers offer opt-out mechanisms, we use them automatically. Where they don't, we document the limitations honestly.
+
+| What msgmodel controls | What msgmodel cannot control |
+|------------------------|------------------------------|
+| ✅ Sends `X-OpenAI-No-Store` header automatically | ❌ OpenAI ZDR eligibility (requires account approval) |
+| ✅ Uses inline base64 encoding (no server-side file uploads) | ❌ Gemini tier detection (paid vs. free) |
+| ✅ Stateless design (we retain nothing) | ❌ Provider-side retention policies |
+| ✅ No parameters to accidentally enable retention | ❌ Provider terms of service changes |
+
+**You don't need to configure anything for privacy** — msgmodel's defaults are already privacy-preserving. However, **provider-level guarantees depend on your account status and tier.** See the [Data Retention & Privacy](#data-retention--privacy) section for details.
 
 ## Features
 
@@ -166,42 +177,47 @@ anthropic_config = AnthropicConfig(
 
 ## Data Retention & Privacy
 
-`msgmodel` is designed with **statelessness** as a core principle—the library itself never retains your data. Provider-level data handling varies, and this section helps you understand your options.
+**msgmodel is stateless** — it never retains your data. All processing is ephemeral.
 
-### OpenAI (Zero Data Retention by Default)
+**Provider behavior varies** — and is ultimately outside our control. This section documents what msgmodel does by default and what depends on your provider account.
+
+### OpenAI
 
 When using OpenAI:
 
-- **Default behavior**: The `X-OpenAI-No-Store` header is automatically sent, opting out of data retention for model training
-- **What this means**: OpenAI does **not** use these interactions for service improvements or model training
+- **Training opt-out**: OpenAI does **not** use API data for model training (this is standard policy for all API users since March 2023)
+- **Data storage**: By default, OpenAI may retain API data for up to 30 days for abuse monitoring. The `X-OpenAI-No-Store` header is sent to request zero storage, but **Zero Data Retention (ZDR) requires separate eligibility** from OpenAI
 - **File handling**: All files are base64-encoded and embedded inline in prompts—no server-side uploads
 
-**Note**: OpenAI's API logs may retain minimal metadata (timestamps, API version, token counts) for ~30 days for debugging purposes, but not the actual prompt/response content.
+**Important**: Training opt-out is automatic for all API users. However, if you need **zero data storage** (not just no training), you must be ZDR-eligible with OpenAI. Review [OpenAI's data usage policy](https://platform.openai.com/docs/models/how-we-use-your-data) and [ZDR documentation](https://platform.openai.com/docs/guides/zero-data-retention).
 
 ```python
 from msgmodel import query
 
 response = query("openai", "Your prompt here")
-# Zero Data Retention header is sent automatically
+# Training opt-out: automatic | ZDR header: sent (eligibility required)
 ```
 
 ### Google Gemini
 
-Google Gemini's data retention policy depends on your service tier:
+Google Gemini's data handling depends entirely on your account tier. **msgmodel cannot detect or control which tier you're on.**
 
-**Paid Services (Google Cloud Billing + Paid Quota)**
-- Data is NOT used for model training or product improvement
-- Prompts and responses may be retained temporarily for abuse detection (typically 24-72 hours)
-- Base64-encoded inline file embedding—no persistent storage
+| Tier | Training Opt-Out | Data Retention |
+|------|------------------|----------------|
+| **Paid** (Cloud Billing) | ✅ Yes | ~24-72 hours (abuse monitoring only) |
+| **Free** | ❌ No | Data may be used for model training |
 
-**Free Tier**
-- Google may retain data for model training. Review Google's terms if this matters for your use case.
+**What msgmodel does**: Uses inline base64 encoding for files (no server-side uploads).
+
+**What msgmodel cannot do**: Detect your tier or change Google's data handling policies.
+
+**If privacy matters for your use case**: Verify you have Google Cloud Billing enabled with paid API quota. Free tier users should assume their data may be used for training.
 
 ```python
 from msgmodel import query
 
-# Gemini request - data handling depends on your account tier
-response = query("gemini", "Your prompt here", api_key="your-api-key")
+# Data handling depends entirely on YOUR Google account tier
+response = query("gemini", "Your prompt here")
 ```
 
 **Learn more**: [Google Gemini API Terms](https://ai.google.dev/gemini-api/terms)
@@ -223,16 +239,23 @@ response = query("claude", "Your prompt here")
 
 **Learn more**: [Anthropic Privacy Policy](https://www.anthropic.com/legal/privacy)
 
-### Summary Comparison
+### Summary
 
-| Provider | Training Data Opt-Out | Data Retention | Notes |
-|----------|----------------------|----------------|-------|
-| **OpenAI** | ✅ Automatic | None (ZDR header) | Metadata ~30 days |
-| **Gemini (Paid)** | ✅ Yes | ~24-72 hours (abuse monitoring) | Requires paid tier |
-| **Gemini (Free)** | ❌ No | Per Google's terms | Review terms |
-| **Anthropic** | ✅ Default | Temporary (safety) | Standard API behavior |
+| Provider | What msgmodel does | Training Opt-Out | Data Retention |
+|----------|-------------------|------------------|----------------|
+| **OpenAI** | Sends `X-OpenAI-No-Store` header | ✅ Automatic (API policy) | ~30 days; ZDR requires eligibility |
+| **Gemini** | Inline file encoding only | ⚠️ Depends on YOUR tier | Paid: ~24-72h / Free: training |
+| **Anthropic** | Standard API calls | ✅ Default (API policy) | Temporary (safety monitoring) |
 
-**For maximum privacy**: Use OpenAI with the default ZDR settings, or Anthropic's API. For Gemini, use the paid tier.
+### Limitations
+
+msgmodel cannot:
+- Verify your OpenAI ZDR eligibility
+- Detect your Gemini account tier
+- Override provider terms of service
+- Guarantee provider policy compliance
+
+**For maximum privacy**: Verify your account status directly with each provider. msgmodel sends all available privacy-preserving signals, but enforcement is provider-side.
 
 ## File Uploads
 

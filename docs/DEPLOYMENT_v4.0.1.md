@@ -80,7 +80,7 @@ Three comprehensive guides created:
 
 ### Features Added
 1. **Async API Privacy**: `aquery()` now returns privacy metadata
-2. **CLI Privacy Display**: `--verbose` flag shows privacy guarantees
+2. **CLI Privacy Display**: `--verbose` flag shows privacy information
 3. **Helper Function**: `format_privacy_info()` for privacy rendering
 
 ### Bug Fixes

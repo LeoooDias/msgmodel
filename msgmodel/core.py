@@ -338,7 +338,7 @@ def query(
         >>> # Simple query with env var API key
         >>> response = query("openai", "Hello, world!")
         >>> print(response.text)
-        >>> print(response.privacy)  # Review privacy guarantees for this request
+        >>> print(response.privacy)  # Review privacy information for this request
         
         >>> # Query with in-memory file (privacy-focused, no disk access)
         >>> import io

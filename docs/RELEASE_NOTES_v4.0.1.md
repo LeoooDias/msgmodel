@@ -38,17 +38,17 @@ async def check_privacy():
     # {
     #     "provider": "openai",
     #     "training_retention": False,
-    #     "data_retention": "None (Zero Data Retention header sent)",
-    #     "enforcement_level": "default",
-    #     "special_conditions": "ZDR header sent automatically",
-    #     "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+    #     "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+    #     "enforcement_level": "api_policy",
+    #     "special_conditions": "Training opt-out is automatic for all API users. Zero Data Retention (no storage) requires separate eligibility from OpenAI.",
+    #     "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
     # }
 
 asyncio.run(check_privacy())
 ```
 
 #### **2. CLI Now Displays Privacy Information**
-The command-line interface can now show privacy guarantees for requests.
+The command-line interface can now show privacy information for requests.
 
 **Usage - Verbose Mode:**
 ```bash
@@ -60,26 +60,26 @@ python -m msgmodel -p openai "Hello!" --verbose
 Hello!
 [INFO] Model: gpt-4o
 [INFO] Provider: openai
-[INFO] Privacy Guarantee for this Request:
+[INFO] Privacy Information for this Request:
   Provider: OPENAI
   Training Retention: NOT retained for training
-  Data Retention: None (Zero Data Retention header sent)
-  Enforcement Level: default
-  Special Conditions: ZDR header sent automatically with all requests.
-  Reference: https://platform.openai.com/docs/guides/zero-data-retention
+  Data Retention: Standard API: ~30 days (ZDR eligibility required for zero storage)
+  Enforcement Level: api_policy
+  Special Conditions: Training opt-out is automatic for all API users. Zero Data Retention (no storage) requires separate eligibility from OpenAI.
+  Reference: https://platform.openai.com/docs/models/how-we-use-your-data
 ```
 
 **Privacy Notice (Always Shown):**
 When privacy information is available but `--verbose` is not used:
 ```
-[INFO] Use --verbose to see privacy guarantees for this provider
+[INFO] Use --verbose to see privacy information for this provider
 ```
 
 #### **3. All Three Providers Have Privacy Metadata**
 
 | Provider | Training Retention | Data Retention | Privacy Link |
 |----------|-------------------|----------------|--------------|
-| **OpenAI** | ❌ No (ZDR enforced) | None | [Zero Data Retention](https://platform.openai.com/docs/guides/zero-data-retention) |
+| **OpenAI** | ❌ No (automatic) | ~30 days (ZDR for zero) | [Data Usage](https://platform.openai.com/docs/models/how-we-use-your-data) |
 | **Gemini** | ⚠️ Tier-dependent | Varies (24-72h paid, training on free) | [Gemini API Terms](https://ai.google.dev/gemini-api/terms) |
 | **Anthropic** | ❌ No (default) | Temporary (safety monitoring) | [Privacy Policy](https://www.anthropic.com/legal/privacy) |
 
@@ -131,13 +131,13 @@ asyncio.run(main())
 
 #### **CLI:**
 ```bash
-# Show privacy guarantees
-python -m msgmodel -p anthropic "Your prompt" --verbose
+# Show privacy information
+python -m msgmodel -p openai "Your prompt" --verbose
 
 # Compare privacy across providers
 for provider in openai gemini anthropic; do
     echo "=== $provider ===" 
-    python -m msgmodel -p $provider "test" --verbose 2>&1 | grep -A 10 "Privacy Guarantee"
+    python -m msgmodel -p $provider "test" --verbose 2>&1 | grep -A 10 "Privacy Information"
 done
 ```
 
@@ -183,7 +183,7 @@ All new functionality is covered by comprehensive tests:
 
 ### Privacy Information is Reference Material
 The privacy metadata returned by msgmodel is informational and based on each provider's published policies. For authoritative information:
-- **OpenAI**: Review [Zero Data Retention documentation](https://platform.openai.com/docs/guides/zero-data-retention)
+- **OpenAI**: Training opt-out is automatic for all API users. For **zero data storage**, review [ZDR documentation](https://platform.openai.com/docs/guides/zero-data-retention) — ZDR requires separate eligibility. See also [Data Usage Policy](https://platform.openai.com/docs/models/how-we-use-your-data).
 - **Gemini**: Check [Gemini API Terms](https://ai.google.dev/gemini-api/terms)
 - **Anthropic**: See [Anthropic Privacy Policy](https://www.anthropic.com/legal/privacy)
 

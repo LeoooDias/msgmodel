@@ -54,7 +54,7 @@ def format_privacy_info(privacy: Optional[Dict[str, Any]]) -> str:
     if not privacy:
         return "Privacy information unavailable"
     
-    lines = ["Privacy Guarantee for this Request:"]
+    lines = ["Privacy Information for this Request:"]
     
     if "provider" in privacy:
         provider_name = privacy["provider"].upper()
@@ -259,7 +259,7 @@ def main() -> int:
                 else:
                     # Always show privacy info notice, even without verbose flag
                     if response.privacy:
-                        logger.info("Use --verbose to see privacy guarantees for this provider")
+                        logger.info("Use --verbose to see privacy information for this provider")
         
         return 0
         

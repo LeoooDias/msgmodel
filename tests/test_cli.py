@@ -316,16 +316,16 @@ class TestFormatPrivacyInfo:
         privacy = {
             "provider": "openai",
             "training_retention": False,
-            "data_retention": "None (Zero Data Retention header sent)",
-            "enforcement_level": "default",
-            "special_conditions": "ZDR header is sent automatically with all requests.",
-            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+            "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+            "enforcement_level": "api_policy",
+            "special_conditions": "Training opt-out is automatic for all API users. Zero Data Retention (no storage) requires separate eligibility from OpenAI.",
+            "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
         }
         
         result = format_privacy_info(privacy)
         assert "OPENAI" in result
         assert "NOT retained for training" in result
-        assert "Zero Data Retention" in result
+        assert "ZDR" in result
         assert "https://platform.openai.com" in result
     
     def test_format_privacy_info_gemini(self):
@@ -385,10 +385,10 @@ class TestPrivacyInCLI:
         mock_response.privacy = {
             "provider": "openai",
             "training_retention": False,
-            "data_retention": "None (Zero Data Retention header sent)",
-            "enforcement_level": "default",
-            "special_conditions": "ZDR header sent automatically",
-            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+            "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+            "enforcement_level": "api_policy",
+            "special_conditions": "Training opt-out is automatic for all API users.",
+            "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
         }
         mock_query.return_value = mock_response
         
@@ -411,10 +411,10 @@ class TestPrivacyInCLI:
         mock_response.privacy = {
             "provider": "openai",
             "training_retention": False,
-            "data_retention": "None (Zero Data Retention header sent)",
-            "enforcement_level": "default",
-            "special_conditions": "ZDR header sent automatically",
-            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+            "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+            "enforcement_level": "api_policy",
+            "special_conditions": "Training opt-out is automatic for all API users.",
+            "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
         }
         mock_query.return_value = mock_response
         
@@ -454,10 +454,10 @@ class TestPrivacyInCLI:
         mock_response.privacy = {
             "provider": "openai",
             "training_retention": False,
-            "data_retention": "None (Zero Data Retention header sent)",
-            "enforcement_level": "default",
-            "special_conditions": "ZDR header sent automatically",
-            "reference": "https://platform.openai.com/docs/guides/zero-data-retention"
+            "data_retention": "Standard API: ~30 days (ZDR eligibility required for zero storage)",
+            "enforcement_level": "api_policy",
+            "special_conditions": "Training opt-out is automatic for all API users.",
+            "reference": "https://platform.openai.com/docs/models/how-we-use-your-data"
         }
         mock_query.return_value = mock_response
         
